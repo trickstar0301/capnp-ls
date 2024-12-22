@@ -4,6 +4,8 @@
 // See LICENSE file in the project root for full license information.
 
 #include "compilation_manager.h"
+#include "compile_error_parser.h"
+#include "utils.h"
 #include <kj/debug.h>
 #include <kj/io.h>
 #include <kj/string.h>
@@ -15,13 +17,23 @@ CompilationManager::CompilationManager(kj::AsyncIoContext &ioContext)
 
 kj::Promise<void> CompilationManager::compile(CompileParams params) {
   KJ_LOG(INFO, "Compiling:", params.fileName);
+  kj::String strippedUri = kj::heapString(params.fileName);
+  if (strippedUri.startsWith(params.workingDir)) {
+    strippedUri =
+        kj::heapString(strippedUri.slice(params.workingDir.size() + 1));
+  }
+  params.diagnosticMap.clear();
   KJ_IF_MAYBE (command, buildCommand(params)) {
     return subprocessRunner
         .run({.command = *command, .workingDir = params.workingDir})
-        .then([params](SubprocessRunner::RunResult result) {
+        .then([params, fileName = kj::mv(strippedUri)](
+                  SubprocessRunner::RunResult result) mutable {
           if (result.exitCode != 0) {
-            KJ_LOG(INFO, "Compilation failed");
-            // TODO: return compilation error message to client
+            int status = CompileErrorParser::parse(
+                fileName, result.errorText, params.diagnosticMap);
+            if (status != 0) {
+              KJ_LOG(ERROR, "Failed to parse compile errors");
+            }
             return kj::Promise<void>(kj::READY_NOW);
           }
 

@@ -3,7 +3,7 @@
 // Licensed under the MIT License.
 // See LICENSE file in the project root for full license information.
 
-#include "lsp_io.h"
+#include "stdin_reader.h"
 #include <cstdlib>
 
 namespace capnp_ls {
@@ -46,15 +46,12 @@ parseNextMessage(const char *buffer, size_t currentPos, size_t processedPos) {
       kj::StringPtr(buffer + processedPos, totalMessageSize)};
 }
 
-kj::Promise<void> LspIO::monitorStdin() {
+kj::Promise<void> StdinReader::monitorStdin() {
   return input->tryRead(buffer + currentPos, 0, BUFFER_SIZE - currentPos - 1)
       .then([this](size_t n) {
         if (n == 0) {
           KJ_LOG(INFO, "EOF detected on stdin");
-          tasks.add(handler.handleMessage(kj::Maybe<kj::StringPtr>(nullptr))
-                        .then([this](kj::Maybe<kj::String> message) {
-                          return kj::Promise<void>(kj::READY_NOW);
-                        }));
+          tasks.add(handler.handleMessage(kj::Maybe<kj::StringPtr>(nullptr)));
           return kj::Promise<void>(kj::READY_NOW);
         }
 
@@ -67,16 +64,7 @@ kj::Promise<void> LspIO::monitorStdin() {
           processedPos = result.processedSize;
 
           KJ_IF_MAYBE (content, result.content) {
-            tasks.add(handler.handleMessage(*content).then(
-                [this](kj::Maybe<kj::String> message) {
-                  KJ_IF_MAYBE (m, message) {
-                    KJ_LOG(INFO, "Writing message", m->cStr());
-                    write(*m);
-                  } else {
-                    KJ_LOG(INFO, "No message to write");
-                  }
-                  return kj::Promise<void>(kj::READY_NOW);
-                }));
+            tasks.add(handler.handleMessage(*content));
           } else {
             break;
           }
@@ -92,11 +80,7 @@ kj::Promise<void> LspIO::monitorStdin() {
       });
 }
 
-kj::Promise<void> LspIO::write(kj::StringPtr message) {
-  return output->write(message.cStr(), message.size());
-}
-
-void LspIO::taskFailed(kj::Exception &&exception) {
+void StdinReader::taskFailed(kj::Exception &&exception) {
   KJ_LOG(ERROR, "task failed", exception.getDescription());
 }
 } // namespace capnp_ls

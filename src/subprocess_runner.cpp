@@ -77,16 +77,22 @@ SubprocessRunner::run(RunParams params) {
   }
 
   int pipeFds[2];
+  int errPipe[2];
   KJ_SYSCALL(pipe(pipeFds));
+  KJ_SYSCALL(pipe(errPipe));
 
   pid_t child;
   KJ_SYSCALL(child = fork());
 
   if (child == 0) {
     // Child process
-    KJ_SYSCALL(close(pipeFds[0]));               // Close read end
-    KJ_SYSCALL(dup2(pipeFds[1], STDOUT_FILENO)); // Connect stdout to pipe
+    KJ_SYSCALL(close(pipeFds[0]));
+    KJ_SYSCALL(dup2(pipeFds[1], STDOUT_FILENO));
     KJ_SYSCALL(close(pipeFds[1]));
+
+    KJ_SYSCALL(close(errPipe[0]));
+    KJ_SYSCALL(dup2(errPipe[1], STDERR_FILENO));
+    KJ_SYSCALL(close(errPipe[1]));
 
     // Execute command
     auto argv = buildArgs(params.command);
@@ -115,38 +121,38 @@ SubprocessRunner::run(RunParams params) {
 
   // Parent process
   KJ_SYSCALL(close(pipeFds[1])); // Close write end
+  KJ_SYSCALL(close(errPipe[1])); // Close write end
 
   auto outputStream = ioContext.lowLevelProvider->wrapInputFd(pipeFds[0]);
+  auto errorStream = ioContext.lowLevelProvider->wrapInputFd(errPipe[0]);
 
   capnp::ReaderOptions options{.traversalLimitInWords = 1 << 30};
-  auto promise =
-      capnp::tryReadMessage(*outputStream, options)
-          .then(
-              [child](kj::Maybe<kj::Own<capnp::MessageReader>>
-                          &&maybeReader) mutable -> RunResult {
-                int status;
-                KJ_SYSCALL(waitpid(child, &status, 0));
+  auto outputPromise = capnp::tryReadMessage(*outputStream, options)
+                           .then(
+                               [child](kj::Maybe<kj::Own<capnp::MessageReader>>
+                                           &&maybeReader) mutable -> RunResult {
+                                 int status;
+                                 KJ_SYSCALL(waitpid(child, &status, 0));
 
-                if (WIFSIGNALED(status)) {
-                  KJ_LOG(
-                      ERROR, "Process terminated by signal:", WTERMSIG(status));
-                  return RunResult{.status = Status::EXECUTION_ERROR};
-                }
+                                 return RunResult{
+                                     .status = Status::SUCCESS,
+                                     .exitCode = 0,
+                                     .maybeReader = kj::mv(maybeReader)};
+                               })
+                           .attach(kj::mv(outputStream));
 
-                int exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-                if (exitCode != 0) {
-                  KJ_LOG(ERROR, "Process failed with exit code", exitCode);
-                } else {
-                  KJ_LOG(INFO, "Process completed successfully");
-                }
+  auto errorPromise = errorStream->readAllText()
+                          .then([child](kj::StringPtr errorText) {
+                            int status;
+                            KJ_SYSCALL(waitpid(child, &status, 0));
+                            return RunResult{
+                                .status = Status::COMPILATION_ERROR,
+                                .exitCode = -1,
+                                .errorText = kj::str(errorText)};
+                          })
+                          .attach(kj::mv(errorStream));
 
-                return RunResult{
-                    .status = Status::SUCCESS,
-                    .exitCode = exitCode,
-                    .maybeReader = kj::mv(maybeReader)};
-              });
-
-  return promise.attach(kj::mv(outputStream));
+  return outputPromise.exclusiveJoin(kj::mv(errorPromise));
 }
 
 } // namespace capnp_ls

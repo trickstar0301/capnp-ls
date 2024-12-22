@@ -11,30 +11,26 @@
 #include <kj/io.h>
 
 namespace capnp_ls {
-class LspIO : public kj::TaskSet::ErrorHandler {
+class StdinReader : public kj::TaskSet::ErrorHandler {
 public:
   static constexpr size_t BUFFER_SIZE = 1 << 16; // 64KB
-  explicit LspIO(
+  explicit StdinReader(
       kj::Own<kj::AsyncInputStream> input,
-      kj::Own<kj::AsyncOutputStream> output,
       LspMessageHandler &handler)
-      : tasks(*this), input(kj::mv(input)), output(kj::mv(output)),
-        handler(handler), currentPos(0) {
+      : tasks(*this), input(kj::mv(input)), handler(handler), currentPos(0) {
     buffer = new char[BUFFER_SIZE];
     tasks.add(monitorStdin());
   }
 
-  ~LspIO() {
+  ~StdinReader() {
     delete[] buffer;
   }
 
 private:
   kj::Promise<void> monitorStdin();
   void taskFailed(kj::Exception &&exception) override;
-  kj::Promise<void> write(kj::StringPtr message);
   kj::TaskSet tasks;
   kj::Own<kj::AsyncInputStream> input;
-  kj::Own<kj::AsyncOutputStream> output;
   LspMessageHandler &handler;
   char *buffer;
   size_t currentPos;

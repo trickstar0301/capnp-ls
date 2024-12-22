@@ -21,12 +21,18 @@ public:
     kj::StringPtr workingDir;
   };
 
-  enum class Status { SUCCESS, WORKDIR_ERROR, EXECUTION_ERROR };
+  enum class Status {
+    SUCCESS,
+    WORKDIR_ERROR,
+    EXECUTION_ERROR,
+    COMPILATION_ERROR
+  };
 
   struct RunResult {
     Status status;
     int exitCode;
     kj::Maybe<kj::Own<capnp::MessageReader>> maybeReader;
+    kj::String errorText;
   };
 
   kj::Promise<RunResult> run(RunParams params);

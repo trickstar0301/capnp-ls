@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "lsp_types.h"
 #include "subprocess_runner.h"
 #include "symbol_resolver.h"
 #include <kj/async-io.h>
@@ -26,6 +27,7 @@ public:
     kj::StringPtr workingDir;
     kj::HashMap<kj::String, kj::HashMap<Range, uint64_t>> &fileSourceInfoMap;
     kj::HashMap<uint64_t, kj::Own<Location>> &nodeLocationMap;
+    kj::HashMap<kj::String, kj::Vector<Diagnostic>> &diagnosticMap;
   };
 
   kj::Promise<void> compile(CompileParams params);

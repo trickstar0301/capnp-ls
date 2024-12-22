@@ -12,14 +12,15 @@ include_directories(
 
 add_executable(${exe_name}
     src/main.cpp
-	src/lsp_io.cpp
+	src/stdin_reader.cpp
+	src/stdout_writer.cpp
 	src/lsp_message_handler.cpp
 	src/lsp_types.cpp
 	src/utils.cpp
 	src/subprocess_runner.cpp
 	src/compilation_manager.cpp
 	src/symbol_resolver.cpp
-	src/capnp_language_server.cpp
+	src/compile_error_parser.cpp
 )
 
 target_link_directories(${exe_name} PRIVATE
