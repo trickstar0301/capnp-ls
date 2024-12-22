@@ -32,4 +32,3 @@ struct Person {
   job @1 :Common.JobType;
 #  job2 @2 :import "/common.capnp".JobType;
 }
-

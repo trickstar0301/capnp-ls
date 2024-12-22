@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # See LICENSE file in the project root for full license information.
 
-@0xbf5147a44a43fea3;
+@0x85728f61399e7ee0;
 
 enum JobType {
   engineer @0;         # Engineer
