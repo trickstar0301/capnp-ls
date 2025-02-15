@@ -30,8 +30,6 @@ jobs:
   build_macos:
     name: Build on macOS (Native Runner)
     runs-on: macos-latest
-    env:
-      CMAKE_LIBRARY_PATH: /opt/homebrew/lib
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4

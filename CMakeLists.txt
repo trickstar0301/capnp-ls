@@ -6,10 +6,6 @@ set(exe_name capnp-ls)
 
 find_package(CapnProto REQUIRED)
 
-include_directories(
-	${CAPNP_INC_DIR}
-)
-
 add_executable(${exe_name}
     src/main.cpp
 	src/stdin_reader.cpp
@@ -23,12 +19,15 @@ add_executable(${exe_name}
 	src/compile_error_parser.cpp
 )
 
-target_link_directories(${exe_name} PRIVATE
-	/usr/local/lib
-)
+if(APPLE)
+  target_link_directories(${exe_name} PRIVATE /usr/local/lib /opt/homebrew/lib)
+else()
+  target_link_directories(${exe_name} PRIVATE /usr/local/lib)
+endif()
 
 target_link_libraries(${exe_name} PRIVATE
-	${CAPNP_LIBRARIES}
+	CapnProto::capnp-rpc
+	CapnProto::capnp-json
 	kj
 	kj-async
 )
