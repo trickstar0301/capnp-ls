@@ -40,6 +40,9 @@ jobs:
           brew update
           brew install cmake
           brew install capnp
+          brew link capnp --force
+          export CMAKE_PREFIX_PATH="/usr/local/opt/capnp"
+          export CMAKE_LIBRARY_PATH="/usr/local/opt/capnp/lib"
 
       - name: Configure CMake
         run: cmake -B build .
