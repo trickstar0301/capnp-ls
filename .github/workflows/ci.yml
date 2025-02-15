@@ -16,13 +16,13 @@ jobs:
       image: ghcr.io/trickstar0301/capnp-prebuilt-ubuntu:1.1.0
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Configure CMake
         run: cmake -B build .
       - name: Build Project
         run: cmake --build build
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: capnp-ls-ubuntu
           path: build/capnp-ls
@@ -32,7 +32,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install Cap'n Proto (macOS)
         run: |
@@ -46,7 +46,7 @@ jobs:
       - name: Build Project
         run: cmake --build build
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: capnp-ls-macos
           path: build/capnp-ls
