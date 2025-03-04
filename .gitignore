@@ -38,7 +38,6 @@ Thumbs.db
 *~
 *.swp
 .vscode-test
-.vscode/
 .idea/
 
 # Temporary files
@@ -46,3 +45,4 @@ Thumbs.db
 
 # Specific editor settings (optional)
 .vscode/c_cpp_properties.json
+.vscode/settings.json

@@ -1,0 +1,30 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "extensionHost",
+			"request": "launch",
+			"name": "Launch Client",
+			"runtimeExecutable": "${execPath}",
+			"args": [
+				"--extensionDevelopmentPath=${workspaceRoot}/samples",
+				"${workspaceRoot}/samples/client/testFixture"
+			],
+			"outFiles": [
+				"${workspaceRoot}/samples/client/out/**/*.js"
+			]
+		},
+		{
+			"name": "Language Server E2E Test",
+			"type": "extensionHost",
+			"request": "launch",
+			"runtimeExecutable": "${execPath}",
+			"args": [
+				"--extensionDevelopmentPath=${workspaceRoot}/samples",
+				"--extensionTestsPath=${workspaceRoot}/samples/client/out/test/index",
+				"${workspaceRoot}/samples/client/testFixture"
+			],
+			"outFiles": ["${workspaceRoot}/samples/client/out/test/**/*.js"]
+		}
+	]
+}
