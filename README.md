@@ -1,12 +1,14 @@
 # Cap'n Proto Language Server
 
+A language server that provides IDE features for Cap'n Proto schema files, including go-to-definition and automatic recompilation.
+
 ## Building from Source
 
 ### Prerequisites
 
 - Supported OS: Linux, macOS
 - CMake
-- Cap'n Proto libraries
+- Cap'n Proto libraries (version 1.1.0 or higher)
 
 ### Build Instructions
 
@@ -53,6 +55,11 @@ Required fields:
 - Limited support for single workspace folders.
 
 ## Upcoming Features
-- Compile error messages
-- Linting support
+
+- Autocomplete feature that includes ordinals
+- Formatting feature
 - Windows support
+
+## Sample Usage
+
+For a complete working example, please check out our [sample client implementation](samples/README.md).
