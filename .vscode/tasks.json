@@ -1,0 +1,19 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "build capnp-language-server",
+			"type": "shell",
+			"command": "mkdir -p build && cmake -B build . && cmake --build build",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"presentation": {
+				"reveal": "always",
+				"panel": "new",
+                "close": true
+			}
+		}
+	]
+}

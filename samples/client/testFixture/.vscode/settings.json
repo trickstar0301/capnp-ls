@@ -1,0 +1,8 @@
+{
+    "capnproto.compiler.path": "capnp",
+    "capnproto.compiler.importPaths": [
+        "schemas/common",
+        "schemas/common2"
+    ],
+    "capnproto.languageServer.path": "../build/capnp-ls"
+}
