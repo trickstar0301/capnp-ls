@@ -1,0 +1,94 @@
+// Copyright (c) 2024 Atsushi Tomida
+// 
+// Licensed under the MIT License.
+// See LICENSE file in the project root for full license information.
+
+import * as path from 'path';
+import { workspace, ExtensionContext, window } from 'vscode';
+
+import {
+	LanguageClient,
+	LanguageClientOptions,
+	ServerOptions,
+} from 'vscode-languageclient/node';
+
+let client: LanguageClient;
+
+export function activate(context: ExtensionContext) {
+	const workspaceFolders = workspace.workspaceFolders;
+    if (!workspaceFolders) {
+        window.showErrorMessage('No workspace folder is opened');
+        return;
+    }
+    const workspaceFolder = workspaceFolders[0];
+	// Get configuration
+	const config = workspace.getConfiguration('capnproto');
+	const serverPath = config.get<string>('languageServer.path');
+	const compilerPath = config.get<string>('compiler.path');
+	const importPaths = config.get<string[]>('compiler.importPaths') || [];
+  
+	// Validate required settings
+	if (!serverPath) {
+		window.showErrorMessage('Cap\'n Proto Language Server path not configured. Please set capnproto.languageServer.path in settings.');
+		return;
+	}
+
+	if (!compilerPath) {
+		window.showErrorMessage('Cap\'n Proto compiler path not configured. Please set capnproto.compiler.path in settings.');
+		return;
+	}
+
+	// Resolve server path
+	const resolvedServerPath = path.isAbsolute(serverPath) 
+		? serverPath 
+		: context.asAbsolutePath(serverPath);
+
+	// Server options
+	const serverOptions: ServerOptions = {
+		command: resolvedServerPath,
+		args: [],
+		options: {
+			cwd: path.dirname(resolvedServerPath),
+		}
+	};
+
+	// Client options
+	const clientOptions: LanguageClientOptions = {
+		documentSelector: [{ scheme: 'file', language: 'capnp' }],
+		synchronize: {
+			fileEvents: workspace.createFileSystemWatcher('**/*.capnp')
+		},
+		outputChannel: window.createOutputChannel('Cap\'n Proto Language Server'),
+		traceOutputChannel: window.createOutputChannel('Cap\'n Proto Language Server Trace'),
+		workspaceFolder: workspaceFolder,
+		initializationOptions: {
+			capnp: {
+				compilerPath: compilerPath,
+				importPaths: importPaths
+			}
+		},
+		middleware: {
+			provideDefinition: (document, position, token, next) => {
+				console.log('Definition requested at position:', position);
+				return next(document, position, token);
+			}
+		}
+	};
+
+	// Create and start the client
+	client = new LanguageClient(
+		'capnproto-language-server',
+		'Cap\'n Proto Language Server',
+		 serverOptions,
+		clientOptions
+	);
+
+	client.start();
+}
+
+export function deactivate(): Thenable<void> | undefined {
+	if (!client) {
+		return undefined;
+	}
+	return client.stop();
+}

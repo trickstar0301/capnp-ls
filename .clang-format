@@ -1,0 +1,20 @@
+NamespaceIndentation: None 
+IndentWidth: 2
+UseTab: Never 
+
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+BreakBeforeBraces: Attach
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+SpacesInParentheses: false
+
+ColumnLimit: 80
+BinPackArguments: false
+BinPackParameters: false
+AlignAfterOpenBracket: AlwaysBreak
+AllowAllParametersOfDeclarationOnNextLine: false
+
+SortIncludes: CaseInsensitive
+FixNamespaceComments: true

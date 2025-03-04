@@ -1,0 +1,82 @@
+{
+	"name": "capnp-ls-client-sample",
+	"description": "A language client example",
+	"author": "Atsushi Tomida",
+	"license": "MIT",
+	"version": "1.0.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/"
+	},
+	"publisher": "atsushi-tomida",
+	"categories": [],
+	"keywords": [
+		"multi-root ready"
+	],
+	"engines": {
+		"vscode": "^1.75.0"
+	},
+	"activationEvents": [
+		"onLanguage:capnp"
+	],
+	"main": "./client/out/extension",
+	"contributes": {
+		"configuration": {
+			"type": "object",
+			"title": "Cap'n Proto",
+			"properties": {
+				"capnproto.languageServer.path": {
+					"type": "string",
+					"default": "",
+					"description": "Launch command of Cap'n Proto language server executable"
+				},
+				"capnproto.compiler.path": {
+					"type": "string",
+					"default": "",
+					"description": "Path to the Cap'n Proto compiler executable"
+				},
+				"capnproto.compiler.importPaths": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [],
+					"description": "Additional import paths for Cap'n Proto schemas"
+				}
+			}
+		},
+		"languages": [
+			{
+				"id": "capnp",
+				"extensions": [
+					".capnp"
+				],
+				"aliases": [
+					"Cap'n Proto",
+					"capnp",
+					"capnproto"
+				]
+			}
+		]
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"compile": "tsc -b",
+		"watch": "tsc -b -w",
+		"lint": "eslint ./client/src  --ext .ts,.tsx",
+		"postinstall": "cd client && npm install && cd ..",
+		"test": "tsc -b && sh ./scripts/e2e.sh"
+	},
+	"devDependencies": {
+		"@types/mocha": "^10.0.6",
+		"@types/node": "^18.19.44",
+		"@typescript-eslint/eslint-plugin": "^7.1.0",
+		"@typescript-eslint/parser": "^7.1.0",
+		"eslint": "^8.57.0",
+		"mocha": "^10.3.0",
+		"typescript": "^5.3.3"
+	},
+	"dependencies": {
+		"vscode-uri": "^3.0.8"
+	}
+}
