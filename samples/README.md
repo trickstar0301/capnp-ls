@@ -1,5 +1,17 @@
 ## Sample Client
 
+### Prerequisites
+
+Before running the sample client, you need to build the Cap'n Proto Language Server first:
+
+```bash
+# From the root directory of the project
+cmake -B build .
+cmake --build build
+```
+
+The language server executable will be available at `build/capnp-ls`. Make sure this build is successful before proceeding with the sample client setup.
+
 ### Building the Sample Client
 
 To build the sample client, run the following commands:
@@ -38,7 +50,7 @@ You can customize the sample workspace by modifying the second argument in the l
 
 #### Customizing the `settings.json`
 
-To configure the sample client, modify the `settings.json` file as follows:
+To customize the client settings, edit the `.vscode/settings.json` file in your workspace as follows:
 
 ```json
 {
@@ -50,4 +62,4 @@ To configure the sample client, modify the `settings.json` file as follows:
 }
 ```
 
-**Reference:** See `samples/client/testFixture/.vscode/settings.json`.
+**Reference:** `samples/client/testFixture/.vscode/settings.json`.
