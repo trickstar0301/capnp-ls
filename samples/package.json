@@ -1,17 +1,22 @@
 {
-	"name": "capnp-ls-client-sample",
-	"description": "A language client example",
+	"name": "capnp-ls-client",
+	"description": "A language client of Cap'n Proto Language Server",
 	"author": "Atsushi Tomida",
 	"license": "MIT",
-	"version": "1.0.0",
+	"version": "0.1.0",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/"
+		"url": "https://github.com/trickstar0301/capnp-ls"
 	},
-	"publisher": "atsushi-tomida",
+	"publisher": "tomitty",
 	"categories": [],
 	"keywords": [
-		"multi-root ready"
+		"capnp",
+		"cap'n proto",
+		"capnproto",
+		"capnp-ls",
+		"capnp-vscode",
+		"capnp-ls-client"
 	],
 	"engines": {
 		"vscode": "^1.75.0"

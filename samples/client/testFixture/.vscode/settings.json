@@ -4,5 +4,5 @@
         "schemas/common",
         "schemas/common2"
     ],
-    "capnproto.languageServer.path": "../build/capnp-ls"
+    "capnproto.languageServer.path": "../build/capnp-ls" // Relative path for development. When using a published extension, specify an absolute path.
 }
