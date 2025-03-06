@@ -60,6 +60,29 @@ Required fields:
 - Formatting feature
 - Windows support
 
-## Sample Usage
+## Sample VSCode Extension
 
-For a complete working example, please check out our [sample client implementation](samples/README.md).
+The `samples` directory contains a complete VSCode extension that demonstrates how to use this language server. For details about the extension, see [samples/README.md](samples/README.md).
+
+### Building and Running the Sample
+
+1. Build the language server (see above)
+2. Set up the extension:
+   ```bash
+   cd samples
+   npm install
+   npm run compile
+   ```
+3. Launch the extension in debug mode:
+   - Run "Launch Client" from the Run/Debug view
+
+### Customizing the Workspace
+
+You can customize the sample workspace by modifying the second argument in the launch configuration's `args` array:
+
+```json
+"args": [
+    "--extensionDevelopmentPath=${workspaceRoot}/samples",
+    "/absolute/path/to/your/workspace"  // Change this path
+]
+```

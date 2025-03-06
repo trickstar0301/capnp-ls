@@ -19,11 +19,7 @@ add_executable(${exe_name}
 	src/compile_error_parser.cpp
 )
 
-if(APPLE)
-  target_link_directories(${exe_name} PRIVATE /usr/local/lib /opt/homebrew/lib)
-else()
-  target_link_directories(${exe_name} PRIVATE /usr/local/lib)
-endif()
+target_link_directories(${exe_name} PRIVATE /usr/local/lib)
 
 target_link_libraries(${exe_name} PRIVATE
 	CapnProto::capnp-rpc

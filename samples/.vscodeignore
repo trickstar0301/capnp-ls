@@ -1,0 +1,24 @@
+# Source files
+client/src/**
+client/testFixture/**
+
+# Build and configuration files
+client/tsconfig.json
+client/tsconfig.tsbuildinfo
+tsconfig.json
+
+# Test files
+client/out/test/**
+scripts/**
+
+# Node.js files
+node_modules/**
+package-lock.json
+
+# Documentation
+README.md
+
+# Source maps
+**/*.map
+
+.vscode-test/**

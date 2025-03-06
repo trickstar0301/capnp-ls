@@ -1,65 +1,36 @@
-## Sample Client
+# Cap'n Proto Language Support for VS Code
 
-### Prerequisites
+A VS Code extension that provides language support for Cap'n Proto schema files.
 
-Before running the sample client, you need to build the Cap'n Proto Language Server first:
+## Features
 
-```bash
-# From the root directory of the project
-cmake -B build .
-cmake --build build
-```
+- Go to definition
+- Diagnostics (error reporting)
 
-The language server executable will be available at `build/capnp-ls`. Make sure this build is successful before proceeding with the sample client setup.
+## Requirements
 
-### Building the Sample Client
+- Cap'n Proto compiler(version 1.1.0 or higher): [capnp](https://capnproto.org/install.html)
+- Cap'n Proto Language Server: [capnp-ls](https://github.com/trickstar0301/capnp-ls)
 
-To build the sample client, run the following commands:
+## Extension Settings
 
-```bash
-cd samples
-npm install
-npm run compile
-```
+This extension contributes the following settings:
 
-### Running the Sample Client
+* `capnproto.languageServer.path`: Path to the Cap'n Proto language server executable.
+* `capnproto.compiler.path`: Path to the Cap'n Proto compiler executable.
+* `capnproto.compiler.importPaths`: Additional import paths for Cap'n Proto schemas. Relative to the workspace root.
 
-The sample client can be executed using VSCode's launch configurations:
-
-1. Open the project in VSCode.
-2. Select the **"Launch Client"** configuration from the Run/Debug view.
-3. Press **F5** to start debugging.
-
-#### Launch Configurations
-
-The sample includes two launch configurations:
-
-1. **Launch Client** - Runs the extension in development mode.
-2. **Language Server E2E Test** - Runs the end-to-end tests.
-
-#### Customizing the Workspace
-
-You can customize the sample workspace by modifying the second argument in the launch configuration's `args` array:
-
-```json
-"args": [
-    "--extensionDevelopmentPath=${workspaceRoot}/samples",
-    "/absolute/path/to/your/workspace"  // Change this path
-]
-```
-
-#### Customizing the `settings.json`
+#### Example configuration:
 
 To customize the client settings, edit the `.vscode/settings.json` file in your workspace as follows:
 
 ```json
 {
-    "capnproto.languageServer.path": "path/to/capnp-ls",
+    "capnproto.languageServer.path": "absolute/path/to/capnp-ls",
     "capnproto.compiler.path": "capnp",
     "capnproto.compiler.importPaths": [
-        "path/to/schema/imports"
+        "relative/path/from/workspace/root/to/schema/imports"
     ]
 }
 ```
-
-**Reference:** `samples/client/testFixture/.vscode/settings.json`.
+See [example configuration](https://github.com/trickstar0301/capnp-ls/blob/main/samples/client/testFixture/.vscode/settings.json) for more details.

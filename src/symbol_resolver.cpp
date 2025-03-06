@@ -98,14 +98,14 @@ kj::String extractFilePath(kj::StringPtr displayName,
   // If not found in workspace, try each import path
   for (const auto &importPath : importPaths) {
     auto withImportPath = kj::Path::parse(importPath);
-    withImportPath = withImportPath.append(filePath);
+    withImportPath = withImportPath.evalNative(filePath);
     try {
       if (currentDir.exists(withImportPath)) {
-        KJ_LOG(INFO, "Found file in current directory", withImportPath);
+        KJ_LOG(INFO, "Found file in import path", withImportPath);
         return kj::str(withImportPath);
       }
     } catch (kj::Exception &e) {
-      KJ_LOG(ERROR, "Failed to check current directory", e.getDescription());
+      KJ_LOG(ERROR, "Failed to check import path", e.getDescription());
     }
   }
 
