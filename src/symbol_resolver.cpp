@@ -38,8 +38,10 @@ struct TypeInfo {
 
 Position getPositionInFile(kj::StringPtr filePath, size_t byteOffset) {
   auto fs = kj::newDiskFilesystem();
-  const kj::Directory &currentDir = fs->getCurrent();
-  auto file = currentDir.openFile(kj::Path::parse(filePath));
+
+  const kj::Directory &rootDir = fs->getRoot();
+  auto file = rootDir.openFile(kj::Path::parse(filePath.slice(1)));
+  KJ_LOG(INFO, "filePath", filePath);
 
   Position pos = {1, 1};
 
@@ -61,56 +63,65 @@ Position getPositionInFile(kj::StringPtr filePath, size_t byteOffset) {
   return pos;
 }
 
-kj::String extractFilePath(kj::StringPtr displayName,
-                           const kj::Vector<kj::String> &importPaths,
-                           kj::StringPtr workspacePath) {
+kj::String extractFilePath(
+    kj::StringPtr displayName,
+    const kj::Vector<kj::String> &importPaths,
+    kj::StringPtr workspacePath) {
   // extract file path from display name. if filename exists in import paths,
   // use it.
 
   KJ_LOG(INFO, "extractFilePath: ", displayName);
   auto colonPos = displayName.findFirst(':');
-  kj::String filePath;
+  kj::String relativeFilePathString;
   KJ_IF_MAYBE (pos, colonPos) {
-    filePath = kj::heapString(displayName.slice(0, *pos));
+    relativeFilePathString = kj::heapString(displayName.slice(0, *pos));
   } else {
-    filePath = kj::heapString(displayName);
+    relativeFilePathString = kj::heapString(displayName);
   }
-
   // Remove leading '/' if exists. kj::Path::parse() can only parse relative
   // path.
-  if (filePath.size() > 0 && filePath[0] == '/') {
-    filePath = kj::heapString(filePath.slice(1));
+  if (relativeFilePathString.startsWith("/")) {
+    relativeFilePathString = kj::heapString(relativeFilePathString.slice(1));
   }
-
+  auto relativeFilePath = kj::Path::parse(relativeFilePathString);
   // Try workspace path first
   auto fs = kj::newDiskFilesystem();
   const kj::Directory &currentDir = fs->getCurrent();
-
-  try {
-    if (currentDir.exists(kj::Path::parse(filePath))) {
-      KJ_LOG(INFO, "Found file in current directory", filePath);
-      return kj::mv(filePath);
-    }
-  } catch (kj::Exception &e) {
-    KJ_LOG(ERROR, "Failed to check current directory", e.getDescription());
-  }
-
-  // If not found in workspace, try each import path
-  for (const auto &importPath : importPaths) {
-    auto withImportPath = kj::Path::parse(importPath);
-    withImportPath = withImportPath.evalNative(filePath);
-    try {
-      if (currentDir.exists(withImportPath)) {
-        KJ_LOG(INFO, "Found file in import path", withImportPath);
-        return kj::str(withImportPath);
+  auto currentPath = fs->getCurrentPath();
+  if (currentDir.exists(relativeFilePath)) {
+    // exists in workspace
+    KJ_LOG(INFO, "Found file in workspace", relativeFilePathString);
+    return currentPath.eval(relativeFilePathString).toNativeString(true);
+  } else {
+    // Try import paths
+    for (const auto &importPath : importPaths) {
+      if (importPath.startsWith("/")) {
+        // absolute path
+        auto parsed = kj::Path::parse(importPath.slice(1));
+        auto eval = parsed.evalNative(relativeFilePathString);
+        if (fs->getRoot().exists(eval)) {
+          KJ_LOG(
+              INFO, "Found file in absoluteimport path", eval.toNativeString());
+          return eval.toNativeString(true);
+        }
+      } else {
+        // relative path
+        auto parsed = kj::Path::parse(importPath);
+        auto eval = parsed.eval(relativeFilePathString);
+        if (currentDir.exists(eval)) {
+          KJ_LOG(
+              INFO,
+              "Found file in relative import path",
+              eval.toNativeString());
+          return currentPath.eval(importPath)
+              .eval(relativeFilePathString)
+              .toNativeString(true);
+        }
       }
-    } catch (kj::Exception &e) {
-      KJ_LOG(ERROR, "Failed to check import path", e.getDescription());
     }
   }
-
   // If file not found anywhere, throw exception
-  KJ_FAIL_REQUIRE("File not found", filePath);
+  KJ_FAIL_REQUIRE("File not found", relativeFilePath);
 }
 
 int SymbolResolver::resolve(
@@ -125,13 +136,15 @@ int SymbolResolver::resolve(
 
     auto request = reader->getRoot<capnp::schema::CodeGeneratorRequest>();
 
-    kj::HashMap<uint64_t, capnp::schema::CodeGeneratorRequest::RequestedFile::
-                              FileSourceInfo::Reader>
+    kj::HashMap<
+        uint64_t,
+        capnp::schema::CodeGeneratorRequest::RequestedFile::FileSourceInfo::
+            Reader>
         fileSourceInfoMap;
 
     for (auto requestedFile : request.getRequestedFiles()) {
-      fileSourceInfoMap.upsert(requestedFile.getId(),
-                               requestedFile.getFileSourceInfo());
+      fileSourceInfoMap.upsert(
+          requestedFile.getId(), requestedFile.getFileSourceInfo());
     }
 
     capnp::SchemaLoader schemaLoader;
@@ -147,8 +160,8 @@ int SymbolResolver::resolve(
     for (auto node : request.getNodes()) {
       if (node.which() == capnp::schema::Node::Which::FILE) {
         KJ_IF_MAYBE (sourceInfo, fileSourceInfoMap.find(node.getId())) {
-          kj::String filePath = extractFilePath(node.getDisplayName(),
-                                                importPaths, workspacePath);
+          kj::String filePath = extractFilePath(
+              node.getDisplayName(), importPaths, workspacePath);
           // clear previous data for this file
           positionToNodeIdMap.erase(filePath);
 
@@ -158,15 +171,18 @@ int SymbolResolver::resolve(
                   kj::str(filePath), Range{Position{1, 1}, Position{1, 1}}}));
 
           for (auto identifier : sourceInfo->getIdentifiers()) {
-            Range range{getPositionInFile(filePath, identifier.getStartByte()),
-                        getPositionInFile(filePath, identifier.getEndByte())};
+            Range range{
+                getPositionInFile(filePath, identifier.getStartByte()),
+                getPositionInFile(filePath, identifier.getEndByte())};
             Location location{kj::str(filePath), range};
             auto &rangeMap = positionToNodeIdMap.findOrCreate(
                 location.uri,
-                [&]() -> kj::HashMap<kj::String,
-                                     kj::HashMap<Range, uint64_t>>::Entry {
-                  return {kj::mv(location.uri), kj::HashMap<Range, uint64_t>()};
-                });
+                [&]() -> kj::HashMap<kj::String, kj::HashMap<Range, uint64_t>>::
+                          Entry {
+                            return {
+                                kj::mv(location.uri),
+                                kj::HashMap<Range, uint64_t>()};
+                          });
             rangeMap.upsert(range, identifier.getTypeId());
           }
         }
@@ -182,10 +198,12 @@ int SymbolResolver::resolve(
           extractFilePath(displayName, importPaths, workspacePath);
 
       KJ_IF_MAYBE (sourceInfo, sourceInfoMap.find(node.getId())) {
-        Range range{getPositionInFile(filePath, sourceInfo->getStartByte()),
-                    getPositionInFile(filePath, sourceInfo->getEndByte())};
-        nodeLocationMap.upsert(node.getId(), kj::heap<Location>(Location{
-                                                 kj::str(filePath), range}));
+        Range range{
+            getPositionInFile(filePath, sourceInfo->getStartByte()),
+            getPositionInFile(filePath, sourceInfo->getEndByte())};
+        nodeLocationMap.upsert(
+            node.getId(),
+            kj::heap<Location>(Location{kj::str(filePath), range}));
       }
     }
     // KJ_LOG(INFO, "positionToNodeIdMap:");

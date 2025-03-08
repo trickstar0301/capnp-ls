@@ -38,7 +38,7 @@ The language server requires the following initialization options:
 ```
 Required fields:
 - `compilerPath`: The path to the Cap'n Proto compiler executable.
-- `importPaths`: An array of import paths for Cap'n Proto schemas (relative to the workspace root).
+- `importPaths`: An array of import paths for Cap'n Proto schemas.
   - When multiple import paths are provided, they are searched in the specified order, similar to how the Cap'n Proto compiler operates.
 
 ### Go to Definition
