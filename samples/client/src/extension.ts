@@ -87,8 +87,22 @@ export function activate(context: ExtensionContext) {
 }
 
 export function deactivate(): Thenable<void> | undefined {
+	console.log('Cap\'n Proto Language Server extension deactivating...');
+	
 	if (!client) {
-		return undefined;
+	  return undefined;
 	}
-	return client.stop();
-}
+	
+	const timeout = new Promise<void>((resolve, reject) => {
+	  const id = setTimeout(() => {
+		clearTimeout(id);
+		console.log('Client stop timed out, forcing shutdown');
+		resolve();
+	  }, 5000);
+	});
+	
+	return Promise.race([
+	  client.stop(),
+	  timeout
+	]);
+  }

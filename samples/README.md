@@ -18,7 +18,7 @@ This extension contributes the following settings:
 
 * `capnproto.languageServer.path`: Path to the Cap'n Proto language server executable.
 * `capnproto.compiler.path`: Path to the Cap'n Proto compiler executable.
-* `capnproto.compiler.importPaths`: Additional import paths for Cap'n Proto schemas. Relative to the workspace root.
+* `capnproto.compiler.importPaths`: Additional import paths for Cap'n Proto schemas.
 
 #### Example configuration:
 
@@ -26,10 +26,10 @@ To customize the client settings, edit the `.vscode/settings.json` file in your 
 
 ```json
 {
-    "capnproto.languageServer.path": "absolute/path/to/capnp-ls",
+    "capnproto.languageServer.path": "/absolute/path/to/capnp-ls",
     "capnproto.compiler.path": "capnp",
     "capnproto.compiler.importPaths": [
-        "relative/path/from/workspace/root/to/schema/imports"
+        "path/to/schema/imports"
     ]
 }
 ```

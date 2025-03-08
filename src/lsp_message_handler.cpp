@@ -349,12 +349,6 @@ kj::Promise<void> LspMessageHandler::handleDefinition(
 
     // erase file:// prefix and workspacePath from uri
     kj::String strippedUri = uriToPath(uri);
-    if (strippedUri.startsWith(workspacePath)) {
-      strippedUri = kj::heapString(strippedUri.slice(workspacePath.size() + 1));
-    } else {
-      KJ_LOG(WARNING, "URI is not in workspace path", uri.cStr());
-      return kj::READY_NOW;
-    }
 
     KJ_LOG(
         INFO,
@@ -379,8 +373,7 @@ kj::Promise<void> LspMessageHandler::handleDefinition(
             // Uri
             auto uriField = locationObj[0];
             uriField.setName("uri");
-            kj::String fullUri =
-                kj::str("file://", workspacePath, "/", (*location)->uri);
+            kj::String fullUri = kj::str("file://", (*location)->uri);
             uriField.getValue().setString(fullUri);
 
             // Range
