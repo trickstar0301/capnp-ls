@@ -12,11 +12,33 @@ A language server that provides IDE features for Cap'n Proto schema files, inclu
 
 ### Build Instructions
 
+You have two options for building the language server:
+
+#### Option 1: Using System Cap'n Proto
+
+If you already have Cap'n Proto installed on your system:
+
 ```bash
 cmake -B build .
 cmake --build build
 ```
-The executable for the language server is located at `build/capnp-ls`.
+
+With this option, you must specify the `compilerPath` in the initialization options.
+
+#### Option 2: Using Bundled Cap'n Proto
+
+If you don't have Cap'n Proto installed or prefer a self-contained build:
+
+```bash
+cmake -B build -DUSE_BUNDLED_CAPNP_TOOL=ON .
+cmake --build build
+```
+
+With this option, the `compilerPath` in the initialization options becomes optional.
+
+This automatically downloads and installs Cap'n Proto, which is guaranteed to be compatible with the language server.
+
+The executable for the language server is located at `build/capnp-ls` in both cases.
 
 ## Language Server Protocol Support
 
@@ -38,6 +60,7 @@ The language server requires the following initialization options:
 ```
 Required fields:
 - `compilerPath`: The path to the Cap'n Proto compiler executable.
+  - When built with `-DUSE_BUNDLED_CAPNP_TOOL=ON`, this path is optional as the bundled compiler will be used by default.
 - `importPaths`: An array of import paths for Cap'n Proto schemas.
   - When multiple import paths are provided, they are searched in the specified order, similar to how the Cap'n Proto compiler operates.
 
