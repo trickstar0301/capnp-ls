@@ -13,7 +13,7 @@
 namespace capnp_ls {
 class StdinReader : public kj::TaskSet::ErrorHandler {
 public:
-  static constexpr size_t BUFFER_SIZE = 1 << 16; // 64KB
+  static constexpr size_t BUFFER_SIZE = 1 << 20; // 1MB
   explicit StdinReader(
       kj::Own<kj::AsyncInputStream> input,
       LspMessageHandler &handler)
