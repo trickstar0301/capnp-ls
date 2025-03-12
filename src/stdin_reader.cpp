@@ -9,7 +9,7 @@
 namespace capnp_ls {
 struct ParsedMessage {
   size_t processedSize;
-  kj::Maybe<kj::StringPtr> content;
+  kj::Maybe<kj::String> content;
 };
 
 ParsedMessage
@@ -43,20 +43,19 @@ parseNextMessage(const char *buffer, size_t currentPos, size_t processedPos) {
 
   return {
       processedPos + totalMessageSize,
-      kj::StringPtr(buffer + processedPos, totalMessageSize)};
+      kj::heapString(buffer + processedPos, totalMessageSize)};
 }
 
 kj::Promise<void> StdinReader::monitorStdin() {
-  return input->tryRead(buffer + currentPos, 0, BUFFER_SIZE - currentPos - 1)
+  return input->tryRead(buffer + currentPos, 0, BUFFER_SIZE - currentPos)
       .then([this](size_t n) {
         if (n == 0) {
           KJ_LOG(INFO, "EOF detected on stdin");
-          tasks.add(handler.handleMessage(kj::Maybe<kj::StringPtr>(nullptr)));
+          tasks.add(handler.handleMessage(kj::Maybe<kj::String>(nullptr)));
           return kj::Promise<void>(kj::READY_NOW);
         }
 
         currentPos += n;
-        buffer[currentPos] = '\0';
 
         size_t processedPos = 0;
         while (processedPos < currentPos) {
@@ -64,7 +63,7 @@ kj::Promise<void> StdinReader::monitorStdin() {
           processedPos = result.processedSize;
 
           KJ_IF_MAYBE (content, result.content) {
-            tasks.add(handler.handleMessage(*content));
+            tasks.add(handler.handleMessage(kj::mv(*content)));
           } else {
             break;
           }
