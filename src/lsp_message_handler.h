@@ -22,7 +22,7 @@ namespace capnp_ls {
 class LspMessageHandler {
 public:
   LspMessageHandler(ServerContext &serverContext, StdoutWriter &stdoutWriter);
-  kj::Promise<void> handleMessage(kj::Maybe<kj::StringPtr> message);
+  kj::Promise<void> handleMessage(kj::Maybe<kj::String> message);
 
 private:
   kj::Maybe<kj::String>

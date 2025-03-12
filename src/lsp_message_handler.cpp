@@ -23,7 +23,7 @@ LspMessageHandler::LspMessageHandler(
 }
 
 kj::Promise<void>
-LspMessageHandler::handleMessage(kj::Maybe<kj::StringPtr> maybeMessage) {
+LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
   try {
     KJ_IF_MAYBE (message, maybeMessage) {
       const char *headerEnd = strstr(message->begin(), LSP_HEADER_DELIMITER);
