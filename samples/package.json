@@ -3,7 +3,7 @@
 	"description": "A language client of Cap'n Proto Language Server",
 	"author": "Atsushi Tomida",
 	"license": "MIT",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/trickstar0301/capnp-ls"
@@ -30,23 +30,37 @@
 			"type": "object",
 			"title": "Cap'n Proto",
 			"properties": {
-				"capnproto.languageServer.path": {
+				"capnp-ls-client.languageServer.path": {
 					"type": "string",
 					"default": "",
 					"description": "Launch command of Cap'n Proto language server executable"
 				},
-				"capnproto.compiler.path": {
+				"capnp-ls-client.compiler.path": {
 					"type": "string",
 					"default": "",
 					"description": "Path to the Cap'n Proto compiler executable"
 				},
-				"capnproto.compiler.importPaths": {
+				"capnp-ls-client.compiler.importPaths": {
 					"type": "array",
 					"items": {
 						"type": "string"
 					},
 					"default": [],
 					"description": "Additional import paths for Cap'n Proto schemas"
+				},
+				"capnp-ls-client.server.extraEnv": {
+					"type": [
+						"null",
+						"object"
+					],
+					"additionalProperties": {
+						"type": [
+							"string",
+							"number"
+						]
+					},
+					"default": null,
+					"markdownDescription": "Extra environment variables that will be passed to the capnp-ls executable. Useful for passing e.g. `CPP_LOG=lsp_server=info` for debugging."
 				}
 			}
 		},

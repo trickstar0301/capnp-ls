@@ -22,17 +22,12 @@ export function activate(context: ExtensionContext) {
     }
     const workspaceFolder = workspaceFolders[0];
 	// Get configuration
-	const config = workspace.getConfiguration('capnproto');
+	const config = workspace.getConfiguration('capnp-ls-client');
 	const serverPath = config.get<string>('languageServer.path');
 	const compilerPath = config.get<string>('compiler.path');
 	const importPaths = config.get<string[]>('compiler.importPaths') || [];
+	const extraEnv = config.get<Record<string, string | number>>('server.extraEnv') || {};
   
-	// Validate required settings
-	if (!serverPath) {
-		window.showErrorMessage('Cap\'n Proto Language Server path not configured. Please set capnproto.languageServer.path in settings.');
-		return;
-	}
-
 	if (!compilerPath) {
 		window.showErrorMessage('Cap\'n Proto compiler path not configured. Please set capnproto.compiler.path in settings.');
 		return;
@@ -49,8 +44,15 @@ export function activate(context: ExtensionContext) {
 		args: [],
 		options: {
 			cwd: path.dirname(resolvedServerPath),
+			env: {
+				...process.env,
+				...extraEnv
+			}
 		}
 	};
+
+	// Create output channels
+	const outputChannel = window.createOutputChannel('Cap\'n Proto Language Server');
 
 	// Client options
 	const clientOptions: LanguageClientOptions = {
@@ -58,8 +60,7 @@ export function activate(context: ExtensionContext) {
 		synchronize: {
 			fileEvents: workspace.createFileSystemWatcher('**/*.capnp')
 		},
-		outputChannel: window.createOutputChannel('Cap\'n Proto Language Server'),
-		traceOutputChannel: window.createOutputChannel('Cap\'n Proto Language Server Trace'),
+		outputChannel: outputChannel,
 		workspaceFolder: workspaceFolder,
 		initializationOptions: {
 			capnp: {
@@ -79,9 +80,11 @@ export function activate(context: ExtensionContext) {
 	client = new LanguageClient(
 		'capnproto-language-server',
 		'Cap\'n Proto Language Server',
-		 serverOptions,
+		serverOptions,
 		clientOptions
 	);
+
+	outputChannel.show();
 
 	client.start();
 }

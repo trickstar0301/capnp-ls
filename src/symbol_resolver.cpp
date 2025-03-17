@@ -41,7 +41,6 @@ Position getPositionInFile(kj::StringPtr filePath, size_t byteOffset) {
 
   const kj::Directory &rootDir = fs->getRoot();
   auto file = rootDir.openFile(kj::Path::parse(filePath.slice(1)));
-  KJ_LOG(INFO, "filePath", filePath);
 
   Position pos = {1, 1};
 

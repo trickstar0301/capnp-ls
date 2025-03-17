@@ -1,8 +1,11 @@
 {
-    "capnproto.compiler.path": "capnp",
-    "capnproto.compiler.importPaths": [
+    "capnp-ls-client.compiler.path": "capnp",
+    "capnp-ls-client.compiler.importPaths": [
         "schemas/common",
         "schemas/common2"
     ],
-    "capnproto.languageServer.path": "../build/capnp-ls" // Relative path for development. When using a published extension, specify an absolute path.
+    "capnp-ls-client.languageServer.path": "../build/capnp-ls", // Relative path for development. When using a published extension, specify an absolute path.
+    "capnp-ls-client.server.extraEnv": {
+        "CPP_LOG": "lsp_server=info"
+    }
 }
