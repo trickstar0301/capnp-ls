@@ -90,7 +90,7 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
         case LspMethod::CANCEL_REQUEST:
         case LspMethod::DID_CHANGE_WATCHED_FILES:
         case LspMethod::DID_CHANGE:
-          KJ_LOG(INFO, "Ignoring method", method.cStr());
+          // KJ_LOG(INFO, "Ignoring method", method.cStr());
           break;
         }
       } else {
@@ -109,7 +109,6 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
               return kj::Promise<void>(kj::READY_NOW);
             });
       } else {
-        KJ_LOG(INFO, "No request id found");
         return promise.then([]() { return kj::Promise<void>(kj::READY_NOW); });
       }
 
@@ -148,7 +147,7 @@ kj::Maybe<kj::String> LspMessageHandler::buildResponseString(
     capnp::JsonCodec codec;
     kj::String responseStr =
         codec.encodeRaw(messageBuilder.getRoot<capnp::JsonValue>());
-    KJ_LOG(INFO, "Encoded response", responseStr.cStr());
+    // KJ_LOG(INFO, "Encoded response", responseStr.cStr());
 
     return kj::str(
         LSP_CONTENT_LENGTH_HEADER,
@@ -324,7 +323,6 @@ kj::Promise<void> LspMessageHandler::handleDefinition(
     KJ_LOG(INFO, "Parsing parameters");
 
     for (auto field : paramsObj) {
-      KJ_LOG(INFO, "Processing field", field.getName());
       if (field.getName() == "textDocument") {
         auto textDocument = field.getValue().getObject();
         for (auto docField : textDocument) {
@@ -483,7 +481,6 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
   try {
     auto paramsObj = params.getObject();
     for (auto field : paramsObj) {
-      KJ_LOG(INFO, "Processing field", field.getName());
       if (field.getName() == "workspaceFolders") {
         auto folders = field.getValue().getArray();
         if (folders.size() > 0) {
@@ -522,7 +519,6 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
     KJ_LOG(ERROR, "Error processing initialize params", e.getDescription());
   }
 
-  KJ_LOG(INFO, "Creating response message");
   auto root = initializeResponseBuilder.initRoot<capnp::JsonValue>();
   auto resultObj = root.initObject(1);
   auto resultField = resultObj[0];
@@ -587,8 +583,6 @@ kj::Promise<void> LspMessageHandler::handleDidOpenTextDocument(
         }
       }
     }
-    KJ_LOG(INFO, "URI", uri.cStr());
-
     return compileCapnpFile(uri);
   } catch (kj::Exception &e) {
     KJ_LOG(

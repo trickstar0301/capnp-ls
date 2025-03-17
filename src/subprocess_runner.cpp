@@ -86,6 +86,9 @@ SubprocessRunner::run(RunParams params) {
 
   if (child == 0) {
     // Child process
+    // To avoid logging from child process
+    kj::_::Debug::setLogLevel(kj::LogSeverity::FATAL);
+
     KJ_SYSCALL(close(pipeFds[0]));
     KJ_SYSCALL(dup2(pipeFds[1], STDOUT_FILENO));
     KJ_SYSCALL(close(pipeFds[1]));

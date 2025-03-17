@@ -17,8 +17,7 @@
 namespace capnp_ls {
 
 int run() {
-  FileLogger logger("capnp-ls.log");
-
+  kj::_::Debug::setLogLevel(kj::LogSeverity::WARNING);
   kj::AsyncIoContext ioContext = kj::setupAsyncIo();
 
   auto paf = kj::newPromiseAndFulfiller<void>();
@@ -47,6 +46,7 @@ int run() {
 
   auto stdout_stream = ioContext.lowLevelProvider->wrapOutputFd(STDOUT_FILENO);
   StdoutWriter stdout_writer(kj::mv(stdout_stream));
+  LspLogger logger(stdout_writer);
 
   auto handler = kj::heap<LspMessageHandler>(context, stdout_writer);
 
