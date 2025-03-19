@@ -23,14 +23,27 @@ export function activate(context: ExtensionContext) {
     const workspaceFolder = workspaceFolders[0];
 	// Get configuration
 	const config = workspace.getConfiguration('capnp-ls-client');
-	const serverPath = config.get<string>('languageServer.path');
-	const compilerPath = config.get<string>('compiler.path');
-	const importPaths = config.get<string[]>('compiler.importPaths') || [];
+	const serverPathRaw = config.get<string>('languageServer.path');
+	const compilerPathRaw = config.get<string>('compiler.path');
+	const importPathsRaw = config.get<string[]>('compiler.importPaths') || [];
 	const extraEnv = config.get<Record<string, string | number>>('server.extraEnv') || {};
-  
-	if (!compilerPath) {
-		window.showErrorMessage('Cap\'n Proto compiler path not configured. Please set capnproto.compiler.path in settings.');
-		return;
+
+	// Resolve environment variables in paths
+	const serverPath = resolveEnvVars(serverPathRaw || '');
+	const compilerPath = resolveEnvVars(compilerPathRaw || '');
+	const resolvedImportPaths = importPathsRaw.map(p => resolveEnvVars(p));
+
+	// Helper function to resolve environment variables in paths
+	function resolveEnvVars(pathStr: string): string {
+		if (!pathStr) return pathStr;
+		
+		// Replace both Unix and Windows style environment variables
+		return pathStr.replace(/\$([a-zA-Z0-9_]+)|\$\{([a-zA-Z0-9_]+)\}|%([a-zA-Z0-9_]+)%/g, 
+			(match, unixVar, unixBracedVar, windowsVar) => {
+				const varName = unixVar || unixBracedVar || windowsVar;
+				const envValue = process.env[varName];
+				return envValue || match; // Keep original if not found
+			});
 	}
 
 	// Resolve server path
@@ -52,7 +65,17 @@ export function activate(context: ExtensionContext) {
 	};
 
 	// Create output channels
-	const outputChannel = window.createOutputChannel('Cap\'n Proto Language Server');
+	const outputChannel = window.createOutputChannel('Cap\'n Proto LSP');
+
+	// Logger function
+	function log(message: string): void {
+		outputChannel.appendLine(`[Client] ${message}`);
+	}
+
+	// Log configuration information
+	log(`Server path: ${resolvedServerPath}`);
+	log(`Compiler path: ${compilerPath}`);
+	log(`Import paths: ${resolvedImportPaths.join(', ')}`);
 
 	// Client options
 	const clientOptions: LanguageClientOptions = {
@@ -65,12 +88,12 @@ export function activate(context: ExtensionContext) {
 		initializationOptions: {
 			capnp: {
 				compilerPath: compilerPath,
-				importPaths: importPaths
+				importPaths: resolvedImportPaths
 			}
 		},
 		middleware: {
 			provideDefinition: (document, position, token, next) => {
-				console.log('Definition requested at position:', position);
+				log(`Definition requested at position: ${position.line}:${position.character}`);
 				return next(document, position, token);
 			}
 		}
@@ -84,7 +107,7 @@ export function activate(context: ExtensionContext) {
 		clientOptions
 	);
 
-	outputChannel.show();
+	// outputChannel.show();
 
 	client.start();
 }
