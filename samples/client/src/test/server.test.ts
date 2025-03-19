@@ -23,7 +23,7 @@ suite('Cap\'n Proto Language Server Test Suite', () => {
 
         await new Promise(resolve => setTimeout(resolve, 1000));
 
-        const config = vscode.workspace.getConfiguration('capnproto');
+        const config = vscode.workspace.getConfiguration('capnp-ls-client');
         console.log('Configuration:', {
             serverPath: config.get('languageServer.path'),
             compilerPath: config.get('compiler.path'),
