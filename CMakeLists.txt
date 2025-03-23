@@ -71,12 +71,14 @@ if(USE_BUNDLED_CAPNP_TOOL)
     target_include_directories(${exe_name} PRIVATE ${CAPNP_INCLUDE_DIR})
     target_link_directories(${exe_name} PRIVATE ${CAPNP_LIB_DIR})
 
+    find_package (Threads)
     target_link_libraries(${exe_name} PRIVATE
         capnp-json
         capnp-rpc
         capnp
         kj-async
         kj
+        ${CMAKE_THREAD_LIBS_INIT}
     )
 
     target_compile_definitions(${exe_name} PRIVATE BUNDLED_CAPNP_EXECUTABLE="${CAPNP_EXECUTABLE}")
