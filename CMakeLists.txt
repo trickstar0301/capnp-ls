@@ -14,8 +14,8 @@ if(USE_BUNDLED_CAPNP_TOOL)
 
     ExternalProject_Add(
         capnproto_external
-        URL https://capnproto.org/capnproto-c++-${CAPNP_VERSION}.tar.gz
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        URL "https://capnproto.org/capnproto-c++-${CAPNP_VERSION}.tar.gz"
         CONFIGURE_COMMAND ./configure --prefix=${CAPNP_INSTALL_DIR} --without-fibers
         BUILD_COMMAND make -j6 check
         INSTALL_COMMAND make install
@@ -71,12 +71,14 @@ if(USE_BUNDLED_CAPNP_TOOL)
     target_include_directories(${exe_name} PRIVATE ${CAPNP_INCLUDE_DIR})
     target_link_directories(${exe_name} PRIVATE ${CAPNP_LIB_DIR})
 
+    find_package (Threads)
     target_link_libraries(${exe_name} PRIVATE
         capnp-json
         capnp-rpc
         capnp
         kj-async
         kj
+        ${CMAKE_THREAD_LIBS_INIT}
     )
 
     target_compile_definitions(${exe_name} PRIVATE BUNDLED_CAPNP_EXECUTABLE="${CAPNP_EXECUTABLE}")
