@@ -403,6 +403,8 @@ kj::Promise<void> LspMessageHandler::handleDefinition(
           }
         }
       }
+    } else {
+      KJ_LOG(ERROR, kj::str("SourceInfo not found due to compilation error for ", strippedUri));
     }
 
     resultField.getValue().setNull();
