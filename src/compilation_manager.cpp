@@ -29,10 +29,11 @@ kj::Promise<void> CompilationManager::compile(CompileParams params) {
         .then([params, fileName = kj::mv(strippedUri)](
                   SubprocessRunner::RunResult result) mutable {
           if (result.exitCode != 0) {
+            KJ_LOG(ERROR, "Failed to compile", fileName, result.errorText);
             int status = CompileErrorParser::parse(
                 fileName, result.errorText, params.diagnosticMap);
             if (status != 0) {
-              KJ_LOG(ERROR, "Failed to parse compile errors");
+              KJ_LOG(ERROR, "Failed to parse compile errors", fileName, result.errorText);
             }
             return kj::Promise<void>(kj::READY_NOW);
           }
