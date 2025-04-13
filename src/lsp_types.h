@@ -8,6 +8,7 @@
 #include <iostream>
 #include <kj/map.h>
 #include <kj/string.h>
+#include <cstdint>
 
 namespace capnp_ls {
 

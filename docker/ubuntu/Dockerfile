@@ -12,13 +12,13 @@ RUN apt-get update && apt-get install -y \
     git \
     pkg-config \
     nodejs \
-    npm \
-    && rm -rf /var/lib/apt/lists/*
+    npm
 
 ENV CAPNP_VERSION=1.1.0
 
 RUN curl -O https://capnproto.org/capnproto-c++-${CAPNP_VERSION}.tar.gz \
     && tar -xzf capnproto-c++-${CAPNP_VERSION}.tar.gz
+    
 RUN cd capnproto-c++-${CAPNP_VERSION} \
     && ./configure \
     && make -j$(nproc) \
@@ -26,5 +26,11 @@ RUN cd capnproto-c++-${CAPNP_VERSION} \
     && ldconfig \
     && cd .. \
     && rm -rf capnproto-c++-${CAPNP_VERSION} capnproto-c++-${CAPNP_VERSION}.tar.gz
+
+RUN apt-get install -y software-properties-common && \
+    add-apt-repository ppa:ubuntu-toolchain-r/test && \
+    apt-get install -y gcc-13 g++-13
+
+RUN rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
