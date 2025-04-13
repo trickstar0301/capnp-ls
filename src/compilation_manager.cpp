@@ -59,14 +59,19 @@ kj::Promise<void> CompilationManager::compile(CompileParams params) {
 kj::Maybe<kj::String> CompilationManager::buildCommand(CompileParams params) {
   kj::Vector<kj::String> args;
   
-#ifdef BUNDLED_CAPNP_EXECUTABLE
-  // バンドルされたコンパイラを使用
-  kj::String compilerPath = kj::heapString(BUNDLED_CAPNP_EXECUTABLE);
-  KJ_LOG(INFO, "Using bundled capnp compiler", compilerPath);
-#else
-  // 外部から指定されたコンパイラを使用
-  kj::String compilerPath = kj::heapString(params.compilerPath);
-#endif
+  kj::String compilerPath;
+  if (params.compilerPath != nullptr && params.compilerPath.size() > 0) {
+    compilerPath = kj::heapString(params.compilerPath);
+    KJ_LOG(INFO, "Using user-specified capnp compiler", compilerPath);
+  } else {
+    #ifdef BUNDLED_CAPNP_EXECUTABLE
+      compilerPath = kj::heapString(BUNDLED_CAPNP_EXECUTABLE);
+      KJ_LOG(INFO, "Using bundled capnp compiler", compilerPath);
+    #else
+      compilerPath = kj::heapString("capnp");
+      KJ_LOG(INFO, "Using default capnp command", compilerPath);
+    #endif
+  }
 
   if (!compilerPath.endsWith("capnp")) {
     KJ_LOG(ERROR, "Compiler path must end with 'capnp'");
