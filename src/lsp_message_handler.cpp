@@ -404,6 +404,7 @@ kj::Promise<void> LspMessageHandler::handleDefinition(
         }
       }
     } else {
+      KJ_LOG(FATAL, "Capnp compilation error occurred. Please check the logs on Cap\'n Proto LSP output channel.");
       KJ_LOG(ERROR, kj::str("SourceInfo not found due to compilation error for ", strippedUri));
     }
 
