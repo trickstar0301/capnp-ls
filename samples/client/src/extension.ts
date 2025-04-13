@@ -128,9 +128,24 @@ export async function activate(context: ExtensionContext) {
 		log(`Downloading capnp-ls version ${version} from ${url} to ${targetPath}`);
 		
 		return new Promise((resolve, reject) => {
-			const file = fs.createWriteStream(targetPath);
+			// ファイルのオープンを遅延させる
+			let file: fs.WriteStream | null = null;
 			
-			const request = https.get(url, (response) => {
+			// GitHubはUser-Agentを要求することがある
+			const options = {
+				headers: {
+					'User-Agent': 'VSCode-CapnProto-Extension',
+					'Accept': 'application/octet-stream'
+				},
+				followRedirects: true // Node.jsの新しいバージョンではサポートされている
+			};
+			
+			log(`Sending request with options: ${JSON.stringify(options)}`);
+			
+			const request = https.get(url, options, (response) => {
+				log(`Received response with status code: ${response.statusCode}`);
+				log(`Response headers: ${JSON.stringify(response.headers)}`);
+				
 				if (response.statusCode === 302 || response.statusCode === 301) {
 					const redirectUrl = response.headers.location;
 					if (!redirectUrl) {
@@ -141,32 +156,74 @@ export async function activate(context: ExtensionContext) {
 					log(`Following redirect to: ${redirectUrl}`);
 					
 					request.destroy();
-					file.close();
 					
-					https.get(redirectUrl, (redirectResponse) => {
+					const redirectUrlObj = new URL(redirectUrl);
+					const redirectOptions = {
+						host: redirectUrlObj.hostname,
+						path: redirectUrlObj.pathname + redirectUrlObj.search,
+						headers: {
+							'User-Agent': 'VSCode-CapnProto-Extension',
+							'Accept': 'application/octet-stream'
+						}
+					};
+					
+					log(`Sending redirect request with options: ${JSON.stringify(redirectOptions)}`);
+					
+					https.get(redirectOptions, (redirectResponse) => {
+						log(`Redirect response status: ${redirectResponse.statusCode}`);
+						log(`Redirect response headers: ${JSON.stringify(redirectResponse.headers)}`);
+						
 						if (redirectResponse.statusCode !== 200) {
 							reject(new Error(`Failed to download from redirect: ${redirectResponse.statusCode} ${redirectResponse.statusMessage}`));
 							return;
 						}
 						
-						const newFile = fs.createWriteStream(targetPath);
-						redirectResponse.pipe(newFile);
+						file = fs.createWriteStream(targetPath);
+						let downloadedBytes = 0;
 						
-						newFile.on('finish', () => {
-							newFile.close();
-							// Make the file executable (chmod +x)
-							fs.chmod(targetPath, 0o755, (err) => {
+						redirectResponse.on('data', (chunk) => {
+							downloadedBytes += chunk.length;
+							if (downloadedBytes % (1024 * 1024) === 0) {
+								log(`Downloaded ${downloadedBytes / 1024 / 1024} MB...`);
+							}
+						});
+						
+						redirectResponse.pipe(file);
+						
+						file.on('finish', () => {
+							if (file) file.close();
+							
+							fs.stat(targetPath, (err, stats) => {
 								if (err) {
-									log(`Error making file executable: ${err.message}`);
+									log(`Error checking file size: ${err.message}`);
 									reject(err);
 									return;
 								}
-								log('Download completed and file made executable');
-								resolve();
+								
+								if (stats.size === 0) {
+									log('Error: Downloaded file is empty (0 bytes)');
+									fs.unlink(targetPath, () => {});
+									reject(new Error('Downloaded file is empty'));
+									return;
+								}
+								
+								log(`Downloaded file size: ${stats.size} bytes`);
+								
+								// 実行可能にする
+								fs.chmod(targetPath, 0o755, (err) => {
+									if (err) {
+										log(`Error making file executable: ${err.message}`);
+										reject(err);
+										return;
+									}
+									log('Download completed and file made executable');
+									resolve();
+								});
 							});
 						});
 						
-						newFile.on('error', (err) => {
+						file.on('error', (err) => {
+							if (file) file.close();
 							fs.unlink(targetPath, () => {}); // Delete the file on error
 							log(`Error downloading file from redirect: ${err.message}`);
 							reject(err);
@@ -185,31 +242,68 @@ export async function activate(context: ExtensionContext) {
 					return;
 				}
 				
+				file = fs.createWriteStream(targetPath);
+				let downloadedBytes = 0;
+				
+				response.on('data', (chunk) => {
+					downloadedBytes += chunk.length;
+					if (downloadedBytes % (1024 * 1024) === 0) {
+						log(`Downloaded ${downloadedBytes / 1024 / 1024} MB...`);
+					}
+				});
+				
 				response.pipe(file);
 				
 				file.on('finish', () => {
-					file.close();
-					// Make the file executable (chmod +x)
-					fs.chmod(targetPath, 0o755, (err) => {
+					if (file) file.close();
+					
+					fs.stat(targetPath, (err, stats) => {
 						if (err) {
-							log(`Error making file executable: ${err.message}`);
+							log(`Error checking file size: ${err.message}`);
 							reject(err);
 							return;
 						}
-						log('Download completed and file made executable');
-						resolve();
+						
+						if (stats.size === 0) {
+							log('Error: Downloaded file is empty (0 bytes)');
+							fs.unlink(targetPath, () => {});
+							reject(new Error('Downloaded file is empty'));
+							return;
+						}
+						
+						log(`Downloaded file size: ${stats.size} bytes`);
+						
+						fs.chmod(targetPath, 0o755, (err) => {
+							if (err) {
+								log(`Error making file executable: ${err.message}`);
+								reject(err);
+								return;
+							}
+							log('Download completed and file made executable');
+							resolve();
+						});
 					});
 				});
 				
 				file.on('error', (err) => {
+					if (file) file.close();
 					fs.unlink(targetPath, () => {}); // Delete the file on error
 					log(`Error downloading file: ${err.message}`);
 					reject(err);
 				});
 			}).on('error', (err) => {
+				if (file) file.close();
 				fs.unlink(targetPath, () => {}); // Delete the file on error
 				log(`Error downloading file: ${err.message}`);
 				reject(err);
+			});
+			
+			// タイムアウトの設定
+			request.setTimeout(30000, () => {
+				request.destroy();
+				if (file) file.close();
+				fs.unlink(targetPath, () => {});
+				reject(new Error('Download timed out after 30 seconds'));
 			});
 		});
 	}
