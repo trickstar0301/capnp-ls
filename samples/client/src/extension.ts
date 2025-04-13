@@ -130,7 +130,56 @@ export async function activate(context: ExtensionContext) {
 		return new Promise((resolve, reject) => {
 			const file = fs.createWriteStream(targetPath);
 			
-			https.get(url, (response) => {
+			const request = https.get(url, (response) => {
+				if (response.statusCode === 302 || response.statusCode === 301) {
+					const redirectUrl = response.headers.location;
+					if (!redirectUrl) {
+						reject(new Error(`Redirect location not found: ${response.statusCode} ${response.statusMessage}`));
+						return;
+					}
+					
+					log(`Following redirect to: ${redirectUrl}`);
+					
+					request.destroy();
+					file.close();
+					
+					https.get(redirectUrl, (redirectResponse) => {
+						if (redirectResponse.statusCode !== 200) {
+							reject(new Error(`Failed to download from redirect: ${redirectResponse.statusCode} ${redirectResponse.statusMessage}`));
+							return;
+						}
+						
+						const newFile = fs.createWriteStream(targetPath);
+						redirectResponse.pipe(newFile);
+						
+						newFile.on('finish', () => {
+							newFile.close();
+							// Make the file executable (chmod +x)
+							fs.chmod(targetPath, 0o755, (err) => {
+								if (err) {
+									log(`Error making file executable: ${err.message}`);
+									reject(err);
+									return;
+								}
+								log('Download completed and file made executable');
+								resolve();
+							});
+						});
+						
+						newFile.on('error', (err) => {
+							fs.unlink(targetPath, () => {}); // Delete the file on error
+							log(`Error downloading file from redirect: ${err.message}`);
+							reject(err);
+						});
+					}).on('error', (err) => {
+						fs.unlink(targetPath, () => {}); // Delete the file on error
+						log(`Error following redirect: ${err.message}`);
+						reject(err);
+					});
+					
+					return;
+				}
+				
 				if (response.statusCode !== 200) {
 					reject(new Error(`Failed to download: ${response.statusCode} ${response.statusMessage}`));
 					return;
