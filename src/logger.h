@@ -77,7 +77,12 @@ private:
     // Convert KJ severity to LSP MessageType
     // 1 = Error, 2 = Warning, 3 = Info, 4 = Log
     int messageType;
+    bool isFatal = false;
     switch (severity) {
+    case kj::LogSeverity::FATAL:
+      messageType = 1;
+      isFatal = true;
+      break;
     case kj::LogSeverity::ERROR:
       messageType = 1;
       break;
@@ -100,7 +105,11 @@ private:
     notificationObj[0].getValue().setString("2.0");
 
     notificationObj[1].setName("method");
-    notificationObj[1].getValue().setString("window/logMessage");
+    if (isFatal) {
+      notificationObj[1].getValue().setString("window/showMessage");
+    } else {
+      notificationObj[1].getValue().setString("window/logMessage");
+    }
 
     notificationObj[2].setName("params");
     auto params = notificationObj[2].getValue().initObject(2);
