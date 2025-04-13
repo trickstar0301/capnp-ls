@@ -89,20 +89,6 @@ export async function activate(context: ExtensionContext) {
 			}
 		}
 		
-		// Check if we need to download the binary for Linux x86_64
-		const isLinuxX86_64 = process.platform === 'linux' && process.arch === 'x64';
-		if (isLinuxX86_64 && !fs.existsSync(extensionBinaryPath)) {
-			log(`Binary not found at ${extensionBinaryPath} and we're on Linux x86_64, attempting to download...`);
-			try {
-				await downloadCapnpLs(extensionBinaryPath, version);
-				log(`Successfully downloaded capnp-ls version ${version} to ${extensionBinaryPath}`);
-				return extensionBinaryPath;
-			} catch (err) {
-				log(`Failed to download capnp-ls: ${err.message}`);
-				// Continue with normal search path if download fails
-			}
-		}
-		
 		for (const candidatePath of candidatePaths) {
 			if (fs.existsSync(candidatePath)) {
 				try {
@@ -115,6 +101,20 @@ export async function activate(context: ExtensionContext) {
 						return candidatePath;
 					}
 				}
+			}
+		}
+
+		// Check if we need to download the binary for Linux x86_64
+		const isLinuxX86_64 = process.platform === 'linux' && process.arch === 'x64';
+		if (isLinuxX86_64 && !fs.existsSync(extensionBinaryPath)) {
+			log(`Binary not found at ${extensionBinaryPath} and we're on Linux x86_64, attempting to download...`);
+			try {
+				await downloadCapnpLs(extensionBinaryPath, version);
+				log(`Successfully downloaded capnp-ls version ${version} to ${extensionBinaryPath}`);
+				return extensionBinaryPath;
+			} catch (err) {
+				log(`Failed to download capnp-ls: ${err.message}`);
+				// Continue with normal search path if download fails
 			}
 		}
 		
