@@ -31,9 +31,11 @@ public:
   };
 
   kj::Promise<void> compile(CompileParams params);
+  kj::Promise<bool> checkCapnpVersionCompatible(kj::StringPtr compilerPath);
 
 private:
   SubprocessRunner subprocessRunner;
   kj::Maybe<kj::String> buildCommand(CompileParams params);
+  bool isCapnpVersionCompatible = false;
 };
 } // namespace capnp_ls

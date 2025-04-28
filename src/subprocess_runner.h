@@ -19,6 +19,7 @@ public:
   struct RunParams {
     kj::StringPtr command;
     kj::StringPtr workingDir;
+    bool isCapnpMessageOutput = false;
   };
 
   enum class Status {
@@ -32,6 +33,7 @@ public:
     Status status;
     int exitCode;
     kj::Maybe<kj::Own<capnp::MessageReader>> maybeReader;
+    kj::String textOutput;
     kj::String errorText;
   };
 
