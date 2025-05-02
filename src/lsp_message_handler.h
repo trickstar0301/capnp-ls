@@ -39,6 +39,9 @@ private:
       capnp::MallocMessageBuilder &initializeResponseBuilder);
   kj::Promise<void>
   handleDidOpenTextDocument(const capnp::JsonValue::Reader &params);
+  kj::Promise<void> handleFormatting(
+      const capnp::JsonValue::Reader &params,
+      capnp::MallocMessageBuilder &formattingResponseBuilder);
   kj::Promise<void> publishDiagnostics(kj::StringPtr fileName);
 
   kj::HashMap<kj::String, kj::HashMap<Range, uint64_t>> fileSourceInfoMap;

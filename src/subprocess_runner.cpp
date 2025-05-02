@@ -173,8 +173,6 @@ SubprocessRunner::run(RunParams params) {
             .errorText = kj::mv(outputs[1].errorText),
         };
       });
-
-  // return outputPromise.exclusiveJoin(kj::mv(errorPromise));
 }
 
 } // namespace capnp_ls
