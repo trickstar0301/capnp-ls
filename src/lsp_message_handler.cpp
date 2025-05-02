@@ -85,6 +85,9 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
         case LspMethod::DID_SAVE:
           promise = handleDidSave(params);
           break;
+        case LspMethod::FORMATTING:
+          promise = handleFormatting(params, *responseMessageBuilder);
+          break;
         case LspMethod::INITIALIZED:
         case LspMethod::SET_TRACE:
         case LspMethod::CANCEL_REQUEST:
@@ -587,6 +590,34 @@ kj::Promise<void> LspMessageHandler::handleDidOpenTextDocument(
       }
     }
     return compileCapnpFile(uri);
+  } catch (kj::Exception &e) {
+    KJ_LOG(
+        ERROR,
+        "Error processing didOpenTextDocument notification",
+        e.getDescription());
+  }
+  return kj::READY_NOW;
+}
+
+kj::Promise<void> LspMessageHandler::handleFormatting(
+    const capnp::JsonValue::Reader &params,
+    capnp::MallocMessageBuilder &formattingResponseBuilder) {
+  try {
+    auto paramsObj = params.getObject();
+    kj::String uri;
+
+    for (auto field : paramsObj) {
+      if (field.getName() == "textDocument") {
+        auto textDocument = field.getValue().getObject();
+        for (auto docField : textDocument) {
+          if (docField.getName() == "uri") {
+            uri = kj::heapString(docField.getValue().getString());
+          }
+        }
+      }
+    }
+    KJ_LOG(ERROR, "Formatting capability is not implemented yet");
+    // TODO: Call CompilationManager::format
   } catch (kj::Exception &e) {
     KJ_LOG(
         ERROR,

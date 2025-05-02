@@ -130,32 +130,49 @@ SubprocessRunner::run(RunParams params) {
   auto errorStream = ioContext.lowLevelProvider->wrapInputFd(errPipe[0]);
 
   capnp::ReaderOptions options{.traversalLimitInWords = 1 << 30};
-  auto outputPromise = capnp::tryReadMessage(*outputStream, options)
-                           .then(
-                               [child](kj::Maybe<kj::Own<capnp::MessageReader>>
-                                           &&maybeReader) mutable -> RunResult {
-                                 int status;
-                                 KJ_SYSCALL(waitpid(child, &status, 0));
-
-                                 return RunResult{
-                                     .status = Status::SUCCESS,
-                                     .exitCode = 0,
-                                     .maybeReader = kj::mv(maybeReader)};
-                               })
-                           .attach(kj::mv(outputStream));
+  kj::Promise<RunResult> outputPromise = kj::Promise<RunResult>(RunResult{
+      .status = Status::EXECUTION_ERROR,
+      .exitCode = -1,
+      .errorText = kj::str("Failed to read output")});
+  if (params.isCapnpMessageOutput) {
+    outputPromise =
+        capnp::tryReadMessage(*outputStream, options)
+            .then(
+                [child](kj::Maybe<kj::Own<capnp::MessageReader>>
+                            &&maybeReader) mutable -> RunResult {
+                  return RunResult{
+                      .exitCode = 0, .maybeReader = kj::mv(maybeReader)};
+                })
+            .attach(kj::mv(outputStream));
+  } else {
+    outputPromise = outputStream->readAllText()
+                        .then([child](kj::StringPtr text) {
+                          return RunResult{.textOutput = kj::str(text)};
+                        })
+                        .attach(kj::mv(outputStream));
+  }
 
   auto errorPromise = errorStream->readAllText()
                           .then([child](kj::StringPtr errorText) {
-                            int status;
-                            KJ_SYSCALL(waitpid(child, &status, 0));
-                            return RunResult{
-                                .status = Status::COMPILATION_ERROR,
-                                .exitCode = -1,
-                                .errorText = kj::str(errorText)};
+                            return RunResult{.errorText = kj::str(errorText)};
                           })
                           .attach(kj::mv(errorStream));
 
-  return outputPromise.exclusiveJoin(kj::mv(errorPromise));
+  auto builder = kj::heapArrayBuilder<kj::Promise<RunResult>>(2);
+  builder.add(kj::mv(outputPromise));
+  builder.add(kj::mv(errorPromise));
+  return kj::joinPromises(builder.finish())
+      .then([child](kj::Array<RunResult> &&outputs) {
+        int status;
+        KJ_SYSCALL(waitpid(child, &status, 0));
+        return RunResult{
+            .status = Status::SUCCESS,
+            .exitCode = WEXITSTATUS(status),
+            .maybeReader = kj::mv(outputs[0].maybeReader),
+            .textOutput = kj::mv(outputs[0].textOutput),
+            .errorText = kj::mv(outputs[1].errorText),
+        };
+      });
 }
 
 } // namespace capnp_ls

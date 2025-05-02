@@ -9,6 +9,8 @@ using Common = import "/common.capnp";
 
 const myCompanyId :UInt32 = 123;
 
+annotation deprecated(field, method) :Text;
+
 interface EmployeeManagement {
   addEmployee @0 (employee :Employee) -> (id :Int32);
   updateEmployee @1 (id :Int32, employee :Employee) -> (employee :Employee);
@@ -19,6 +21,16 @@ interface EmployeeManagement {
     job @2 :Common.JobType;
     job2 @3 :import "/common.capnp".JobType;
     bar @4 :Foo.Bar.Baz;
+    oldField @5 :Text $deprecated("Use newField instead");
+    contact :union {
+      email @6 :Text;
+      phone @7 :Text;
+      address :group {
+        street @8 :Text;
+        city @9 :Text;
+        country @10 :Text;
+      }
+    }
   }
 }
 

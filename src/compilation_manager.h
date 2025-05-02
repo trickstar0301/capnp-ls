@@ -30,10 +30,19 @@ public:
     kj::HashMap<kj::String, kj::Vector<Diagnostic>> &diagnosticMap;
   };
 
+  struct FormatParams {
+    kj::StringPtr compilerPath;
+    kj::StringPtr fileName;
+    kj::StringPtr workingDir;
+  };
+
   kj::Promise<void> compile(CompileParams params);
+  kj::Promise<bool> checkCapnpVersionCompatible(kj::StringPtr compilerPath);
+  kj::Promise<void> format(FormatParams params);
 
 private:
   SubprocessRunner subprocessRunner;
   kj::Maybe<kj::String> buildCommand(CompileParams params);
+  bool isCapnpVersionCompatible = false;
 };
 } // namespace capnp_ls

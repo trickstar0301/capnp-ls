@@ -37,7 +37,8 @@ constexpr const char LSP_RESULT[] = "result";
   MACRO(DID_CHANGE, "textDocument/didChange")                                  \
   MACRO(INITIALIZED, "initialized")                                            \
   MACRO(SET_TRACE, "$/setTrace")                                               \
-  MACRO(CANCEL_REQUEST, "$/cancelRequest")
+  MACRO(CANCEL_REQUEST, "$/cancelRequest")                                     \
+  MACRO(FORMATTING, "textDocument/formatting")
 
 enum class LspMethod {
 #define DECLARE_METHOD(id, name) id,

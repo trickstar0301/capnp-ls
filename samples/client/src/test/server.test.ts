@@ -62,8 +62,8 @@ suite('Cap\'n Proto Language Server Test Suite', () => {
         // TODO: check compile is done without timeout
         await new Promise(resolve => setTimeout(resolve, 2000));
         
-        // line 13, column 31 (0-indexed)
-        const position = new vscode.Position(12, 30);
+        // line 15, column 29 (0-indexed)
+        const position = new vscode.Position(14, 28);
         console.log('Testing position:', position);
         
         const definitions = await vscode.commands.executeCommand<vscode.Location[]>(
@@ -74,6 +74,8 @@ suite('Cap\'n Proto Language Server Test Suite', () => {
 
         console.log('Definitions found:', definitions?.length);
         assert.ok(definitions?.length > 0, 'No definitions found');
-        // assert.strictEqual(path.basename(definitions[0].uri.fsPath), 'company.capnp');
+        assert.strictEqual(path.basename(definitions[0].uri.fsPath), 'company.capnp');
+        assert.strictEqual(definitions[0].range.start.line, 17, 'Definition should be at line 18 (0-indexed)');
+        assert.strictEqual(definitions[0].range.start.character, 2, 'Definition should start at character 3');
     });
 }); 
