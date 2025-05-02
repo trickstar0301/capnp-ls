@@ -110,11 +110,10 @@ CompilationManager::checkCapnpVersionCompatible(kj::StringPtr compilerPath) {
         }
 
         try {
-          // Parse version string from errorText (stderr)
           std::string outputStr(result.textOutput.cStr());
           KJ_LOG(INFO, "Version output:", outputStr);
 
-          std::regex versionRegex(R"(Cap'n Proto version (\d+)\.(\d+))");
+          std::regex versionRegex(R"(Cap'n Proto version (\d+)\.(\d+)(?:\.\d+)?(?:-[a-zA-Z0-9]+)?)");
           std::smatch matches;
 
           if (!std::regex_search(outputStr, matches, versionRegex)) {
@@ -134,7 +133,7 @@ CompilationManager::checkCapnpVersionCompatible(kj::StringPtr compilerPath) {
             int major = std::stoi(matches[1].str());
             int minor = std::stoi(matches[2].str());
 
-            KJ_LOG(INFO, "Parsed version:", major, ".", minor);
+            KJ_LOG(INFO, kj::str("Parsed version:", major, ".", minor));
 
             // Check if version is at least 1.1.0
             if (major > 1) {
@@ -146,23 +145,23 @@ CompilationManager::checkCapnpVersionCompatible(kj::StringPtr compilerPath) {
               return true;
             }
 
-            KJ_LOG(ERROR, "Unsupported version:", major, ".", minor);
+            KJ_LOG(ERROR, kj::str("Unsupported version:", major, ".", minor));
             return false;
           } catch (const std::invalid_argument &e) {
-            KJ_LOG(ERROR, "Invalid version number format:", e.what());
+            KJ_LOG(ERROR, kj::str("Invalid version number format:", e.what()));
             return false;
           } catch (const std::out_of_range &e) {
-            KJ_LOG(ERROR, "Version number out of range:", e.what());
+            KJ_LOG(ERROR, kj::str("Version number out of range:", e.what()));
             return false;
           }
         } catch (const std::regex_error &e) {
-          KJ_LOG(ERROR, "Regex error:", e.what());
+          KJ_LOG(ERROR, kj::str("Regex error:", e.what()));
           return false;
         } catch (const kj::Exception &e) {
-          KJ_LOG(ERROR, "Error parsing version output:", e.getDescription());
+          KJ_LOG(ERROR, kj::str("Error parsing version output:", e.getDescription()));
           return false;
         } catch (const std::exception &e) {
-          KJ_LOG(ERROR, "Unexpected error:", e.what());
+          KJ_LOG(ERROR, kj::str("Unexpected error:", e.what()));
           return false;
         }
       })
