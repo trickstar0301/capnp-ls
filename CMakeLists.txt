@@ -47,9 +47,9 @@ target_compile_definitions(${exe_name} PRIVATE
     CAPNP_LS_CAPNP_SOURCE_DIR="${CAPNP_SOURCE_DIR}"
 )
 target_link_libraries(${exe_name} PRIVATE
-    capnp-rpc
     capnp-json
     capnpc
+    kj-async
 )
 
 if(CAPNP_LS_BUILD_TESTS)
