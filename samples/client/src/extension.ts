@@ -19,7 +19,7 @@ let client: LanguageClient;
 type ReleasePlatform = 'linux-x86_64' | 'macos-arm64';
 
 // Default language server version for downloadable release binaries.
-const DEFAULT_SERVER_VERSION = 'v0.0.1';
+const DEFAULT_SERVER_VERSION = 'v0.0.2';
 const DEFAULT_CAPNP_VERSION = '1.2.0';
 
 export async function activate(context: ExtensionContext) {

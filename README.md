@@ -62,7 +62,7 @@ To build a macOS arm64 release artifact locally:
 
 ```bash
 scripts/build-macos-arm64-release.sh 1.2.0 /path/to/capnproto/c++
-gh release upload v0.0.1 dist/capnp-ls-macos-arm64-capnp-1.2.0 --clobber
+gh release upload v0.0.2 dist/capnp-ls-macos-arm64-capnp-1.2.0 --clobber
 ```
 
 ## Language Server Protocol Support
