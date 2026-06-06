@@ -3,17 +3,22 @@ client/src/**
 client/testFixture/**
 
 # Build and configuration files
+.vscode/**
 client/tsconfig.json
 client/tsconfig.tsbuildinfo
+client/package.json
+client/pnpm-lock.yaml
 tsconfig.json
+eslint.config.js
 
 # Test files
 client/out/test/**
 scripts/**
 
 # Node.js files
-node_modules/**
+client/node_modules/**
 package-lock.json
+pnpm-lock.yaml
 
 # Documentation
 README.md
