@@ -48,7 +48,6 @@ private:
   kj::HashMap<uint64_t, kj::Own<Location>> nodeLocationMap;
   kj::HashMap<kj::String, kj::Vector<Diagnostic>> diagnosticMap;
   kj::String workspacePath;
-  kj::String compilerPath;
   kj::Vector<kj::String> importPaths;
   ServerContext &context;
   kj::Own<CompilationManager> compilationManager;

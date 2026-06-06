@@ -10,13 +10,16 @@
 		"url": "https://github.com/trickstar0301/capnp-ls"
 	},
 	"engines": {
-		"vscode": "^1.75.0"
+		"vscode": "^1.91.0"
 	},
 	"dependencies": {
-		"vscode-languageclient": "^9.0.1"
+		"vscode-languageclient": "^10.0.0"
 	},
 	"devDependencies": {
-		"@types/vscode": "^1.75.1",
-		"@vscode/test-electron": "^2.3.9"
+		"@types/mocha": "^10.0.10",
+		"@types/node": "^25.9.2",
+		"@types/vscode": "^1.120.0",
+		"@vscode/test-electron": "^2.5.2",
+		"typescript": "^6.0.3"
 	}
 }

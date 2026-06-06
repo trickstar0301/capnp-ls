@@ -29,7 +29,7 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
       const char *headerEnd = strstr(message->begin(), LSP_HEADER_DELIMITER);
       if (!headerEnd) {
         KJ_LOG(ERROR, "Invalid message format: no header delimiter found");
-        handleShutdown();
+        (void)handleShutdown();
         return kj::READY_NOW;
       }
 
@@ -93,6 +93,7 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
         case LspMethod::CANCEL_REQUEST:
         case LspMethod::DID_CHANGE_WATCHED_FILES:
         case LspMethod::DID_CHANGE:
+        case LspMethod::DID_CLOSE:
           // KJ_LOG(INFO, "Ignoring method", method.cStr());
           break;
         }
@@ -107,7 +108,7 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
              builder = kj::mv(responseMessageBuilder)]() mutable {
               auto response = builder->getRoot<capnp::JsonValue>().asReader();
               KJ_IF_MAYBE (responseString, buildResponseString(id, response)) {
-                stdoutWriter.write(*responseString);
+                (void)stdoutWriter.write(*responseString);
               }
               return kj::Promise<void>(kj::READY_NOW);
             });
@@ -117,7 +118,7 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
 
     } else {
       KJ_LOG(INFO, "EOF detected on stdin, initiating shutdown...");
-      handleShutdown();
+      (void)handleShutdown();
     }
   } catch (const std::exception &e) {
     KJ_LOG(ERROR, "Error processing message", e.what());
@@ -167,14 +168,13 @@ kj::Promise<void> LspMessageHandler::compileCapnpFile(kj::StringPtr uri) {
   auto strippedUri = uriToPath(uri);
   if (strippedUri.endsWith(".capnp")) {
     return compilationManager
-        ->compile(CompilationManager::CompileParams{
-            .compilerPath = compilerPath,
-            .importPaths = importPaths,
-            .fileName = strippedUri,
-            .workingDir = workspacePath,
-            .fileSourceInfoMap = fileSourceInfoMap,
-            .nodeLocationMap = nodeLocationMap,
-            .diagnosticMap = diagnosticMap})
+        ->compile(CompilationManager::CompileParams(
+            importPaths,
+            strippedUri,
+            workspacePath,
+            fileSourceInfoMap,
+            nodeLocationMap,
+            diagnosticMap))
         .then([this, strippedUri = kj::mv(strippedUri)]() {
           return publishDiagnostics(strippedUri);
         });
@@ -227,7 +227,7 @@ LspMessageHandler::publishDiagnostics(kj::StringPtr fileName) {
           notificationStr.size(),
           LSP_HEADER_DELIMITER,
           notificationStr);
-      stdoutWriter.write(message);
+      (void)stdoutWriter.write(message);
     } else {
       for (const auto &[uri, diagnostics] : diagnosticMap) {
         // Set URI
@@ -291,7 +291,7 @@ LspMessageHandler::publishDiagnostics(kj::StringPtr fileName) {
             LSP_HEADER_DELIMITER,
             notificationStr);
 
-        stdoutWriter.write(message);
+        (void)stdoutWriter.write(message);
       }
     }
   } catch (kj::Exception &e) {
@@ -407,8 +407,12 @@ kj::Promise<void> LspMessageHandler::handleDefinition(
         }
       }
     } else {
-      KJ_LOG(FATAL, "Capnp compilation error occurred. Please check the logs on Cap\'n Proto LSP output channel.");
-      KJ_LOG(ERROR, kj::str("SourceInfo not found due to compilation error for ", strippedUri));
+      KJ_LOG(
+          INFO,
+          kj::str(
+              "SourceInfo not found for ",
+              strippedUri,
+              ". The file may still be compiling or compilation may have failed."));
     }
 
     resultField.getValue().setNull();
@@ -505,11 +509,7 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
           if (optField.getName() == "capnp") {
             auto capnpConfig = optField.getValue().getObject();
             for (auto configField : capnpConfig) {
-              if (configField.getName() == "compilerPath") {
-                compilerPath =
-                    kj::heapString(configField.getValue().getString());
-                KJ_LOG(INFO, "Compiler path set to", compilerPath);
-              } else if (configField.getName() == "importPaths") {
+              if (configField.getName() == "importPaths") {
                 auto paths = configField.getValue().getArray();
                 for (auto path : paths) {
                   importPaths.add(kj::heapString(path.getString()));

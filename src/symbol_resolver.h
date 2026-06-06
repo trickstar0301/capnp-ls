@@ -6,13 +6,13 @@
 #pragma once
 
 #include "lsp_types.h"
-#include <capnp/message.h>
+#include <capnp/schema.capnp.h>
 #include <kj/map.h>
 
 namespace capnp_ls {
 class SymbolResolver {
 public:
-  static int resolve(kj::Own<capnp::MessageReader> reader,
+  static int resolve(capnp::schema::CodeGeneratorRequest::Reader request,
                      kj::HashMap<kj::String, kj::HashMap<Range, uint64_t>>
                          &positionToNodeIdMap,
                      kj::HashMap<uint64_t, kj::Own<Location>> &nodeLocationMap,

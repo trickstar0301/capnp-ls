@@ -1,5 +1,5 @@
 // Copyright (c) 2024 Atsushi Tomida
-// 
+//
 // Licensed under the MIT License.
 // See LICENSE file in the project root for full license information.
 
@@ -12,7 +12,7 @@ suite('Cap\'n Proto Language Server Test Suite', () => {
 
     test('Initialize', async () => {
         console.log('Workspace folders:', vscode.workspace.workspaceFolders);
-        
+
         if (!vscode.workspace.workspaceFolders) {
             console.log('No workspace folders found');
         } else {
@@ -26,12 +26,12 @@ suite('Cap\'n Proto Language Server Test Suite', () => {
         const config = vscode.workspace.getConfiguration('capnp-ls-client');
         console.log('Configuration:', {
             serverPath: config.get('languageServer.path'),
-            compilerPath: config.get('compiler.path'),
+            capnpVersion: config.get('languageServer.capnpVersion'),
             importPaths: config.get('compiler.importPaths')
         });
 
         assert.ok(config.get('languageServer.path'), 'Language server path is not configured');
-        assert.ok(config.get('compiler.path'), 'Compiler path is not configured');
+        assert.ok(config.get('languageServer.capnpVersion'), 'Cap\'n Proto linked version is not configured');
         assert.ok(Array.isArray(config.get('compiler.importPaths')), 'Import paths are not configured');
     });
 
@@ -39,13 +39,13 @@ suite('Cap\'n Proto Language Server Test Suite', () => {
         console.log('Starting Open Document test');
         const workspaceFolder = vscode.workspace.workspaceFolders![0];
         console.log('Workspace folder:', workspaceFolder?.uri.fsPath);
-        
+
         const uri = vscode.Uri.file(path.join(workspaceFolder.uri.fsPath, 'schemas/company.capnp'));
         console.log('Document URI:', uri.fsPath);
-        
+
         document = await vscode.workspace.openTextDocument(uri);
         console.log('Document opened:', document.uri.fsPath);
-        
+
         await vscode.window.showTextDocument(document);
         assert.strictEqual(document.languageId, 'capnp');
     });
@@ -58,14 +58,14 @@ suite('Cap\'n Proto Language Server Test Suite', () => {
         document = await vscode.workspace.openTextDocument(uri);
         await vscode.window.showTextDocument(document);
         console.log('Document opened:', document.uri.fsPath);
-        
+
         // TODO: check compile is done without timeout
         await new Promise(resolve => setTimeout(resolve, 2000));
-        
+
         // line 15, column 29 (0-indexed)
         const position = new vscode.Position(14, 28);
         console.log('Testing position:', position);
-        
+
         const definitions = await vscode.commands.executeCommand<vscode.Location[]>(
             'vscode.executeDefinitionProvider',
             document.uri,
@@ -78,4 +78,4 @@ suite('Cap\'n Proto Language Server Test Suite', () => {
         assert.strictEqual(definitions[0].range.start.line, 17, 'Definition should be at line 18 (0-indexed)');
         assert.strictEqual(definitions[0].range.start.character, 2, 'Definition should start at character 3');
     });
-}); 
+});

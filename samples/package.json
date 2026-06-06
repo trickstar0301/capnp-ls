@@ -19,7 +19,7 @@
 		"capnp-ls-client"
 	],
 	"engines": {
-		"vscode": "^1.75.0"
+		"vscode": "^1.91.0"
 	},
 	"activationEvents": [
 		"onLanguage:capnp"
@@ -33,12 +33,22 @@
 				"capnp-ls-client.languageServer.path": {
 					"type": "string",
 					"default": "",
-					"description": "Launch command of Cap'n Proto language server executable"
+					"description": "Explicit path to the Cap'n Proto language server executable"
 				},
-				"capnp-ls-client.compiler.path": {
+				"capnp-ls-client.languageServer.version": {
 					"type": "string",
-					"default": "",
-					"description": "Path to the Cap'n Proto compiler executable"
+					"default": "v0.0.1",
+					"description": "capnp-ls release tag used for automatic Linux x86_64 and macOS arm64 downloads"
+				},
+				"capnp-ls-client.languageServer.capnpVersion": {
+					"type": "string",
+					"enum": [
+						"1.1.0",
+						"1.2.0",
+						"2.0-dev"
+					],
+					"default": "1.2.0",
+					"description": "Cap'n Proto compiler version linked into the automatically downloaded language server binary"
 				},
 				"capnp-ls-client.compiler.importPaths": {
 					"type": "array",
@@ -79,23 +89,23 @@
 		]
 	},
 	"scripts": {
-		"vscode:prepublish": "npm run compile",
+		"vscode:prepublish": "pnpm compile",
 		"compile": "tsc -b",
 		"watch": "tsc -b -w",
 		"lint": "eslint ./client/src  --ext .ts,.tsx",
-		"postinstall": "cd client && npm install && cd ..",
+		"postinstall": "pnpm --dir client install",
 		"test": "tsc -b && sh ./scripts/e2e.sh"
 	},
 	"devDependencies": {
-		"@types/mocha": "^10.0.6",
-		"@types/node": "^18.19.44",
-		"@typescript-eslint/eslint-plugin": "^7.1.0",
-		"@typescript-eslint/parser": "^7.1.0",
-		"eslint": "^8.57.0",
-		"mocha": "^10.3.0",
-		"typescript": "^5.3.3"
+		"@types/mocha": "^10.0.10",
+		"@types/node": "^25.9.2",
+		"@typescript-eslint/eslint-plugin": "^8.60.1",
+		"@typescript-eslint/parser": "^8.60.1",
+		"eslint": "^10.4.1",
+		"mocha": "^11.7.6",
+		"typescript": "^6.0.3"
 	},
 	"dependencies": {
-		"vscode-uri": "^3.0.8"
+		"vscode-uri": "^3.1.0"
 	}
 }

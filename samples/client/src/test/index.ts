@@ -3,8 +3,24 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 import * as path from 'path';
-import * as Mocha from 'mocha';
-import * as glob from 'glob';
+import * as fs from 'fs/promises';
+import Mocha = require('mocha');
+
+async function findTestFiles(dir: string): Promise<string[]> {
+	const entries = await fs.readdir(dir, { withFileTypes: true });
+	const files: string[] = [];
+
+	for (const entry of entries) {
+		const fullPath = path.join(dir, entry.name);
+		if (entry.isDirectory()) {
+			files.push(...await findTestFiles(fullPath));
+		} else if (entry.isFile() && entry.name.endsWith('.test.js')) {
+			files.push(fullPath);
+		}
+	}
+
+	return files;
+}
 
 export function run(): Promise<void> {
 	// Create the mocha test
@@ -17,13 +33,9 @@ export function run(): Promise<void> {
 	const testsRoot = __dirname;
 
 	return new Promise((resolve, reject) => {
-		glob('**.test.js', { cwd: testsRoot }, (err, files) => {
-			if (err) {
-				return reject(err);
-			}
-
+		findTestFiles(testsRoot).then(files => {
 			// Add files to the test suite
-			files.forEach(f => mocha.addFile(path.resolve(testsRoot, f)));
+			files.forEach(f => mocha.addFile(f));
 
 			try {
 				// Run the mocha test
@@ -38,6 +50,6 @@ export function run(): Promise<void> {
 				console.error(err);
 				reject(err);
 			}
-		});
+		}).catch(reject);
 	});
 }

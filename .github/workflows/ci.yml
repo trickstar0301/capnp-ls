@@ -1,64 +1,97 @@
-name: CI - Build LSP Server with Cap'n Proto
+name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
     tags:
-      - '*'
+      - "*"
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
-  build_gcc:
-    name: Build with GCC
+  build:
+    name: Build Cap'n Proto ${{ matrix.capnp_version }}
     if: "!startsWith(github.ref, 'refs/tags/')"
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/trickstar0301/capnp-prebuilt-ubuntu:1.1.0
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - capnp_version: "1.1.0"
+            capnp_ref: "v1.1.0"
+          - capnp_version: "1.2.0"
+            capnp_ref: "v1.2.0"
+          - capnp_version: "2.0-dev"
+            capnp_ref: "v2"
     steps:
-      - name: Checkout Repository
+      - name: Checkout capnp-ls
         uses: actions/checkout@v4
-      - name: Configure CMake with GCC
-        run: |
-          cmake -B build \
-            -DCMAKE_CXX_COMPILER=g++-13 .
-      - name: Build Project
-        run: cmake --build build
 
-  build_regular:
-    name: Regular Build
-    if: "!startsWith(github.ref, 'refs/tags/')"
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/trickstar0301/capnp-prebuilt-ubuntu:1.1.0
-    steps:
-      - name: Checkout Repository
+      - name: Checkout Cap'n Proto
         uses: actions/checkout@v4
-      - name: Configure CMake
-        run: cmake -B build .
-      - name: Build Project
-        run: cmake --build build
+        with:
+          repository: capnproto/capnproto
+          ref: ${{ matrix.capnp_ref }}
+          path: capnproto
+
+      - name: Configure
+        run: |
+          cmake -B build-${{ matrix.capnp_version }} \
+            -DCAPNP_SOURCE_DIR="${GITHUB_WORKSPACE}/capnproto/c++" .
+
+      - name: Build
+        run: cmake --build build-${{ matrix.capnp_version }}
+
+      - name: Test
+        run: ctest --test-dir build-${{ matrix.capnp_version }} --output-on-failure
 
   build_release:
-    name: Release Build
+    name: Release Cap'n Proto ${{ matrix.capnp_version }}
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/trickstar0301/capnp-prebuilt-ubuntu:1.1.0
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - capnp_version: "1.1.0"
+            capnp_ref: "v1.1.0"
+          - capnp_version: "1.2.0"
+            capnp_ref: "v1.2.0"
+          - capnp_version: "2.0-dev"
+            capnp_ref: "v2"
     steps:
-      - name: Checkout Repository
+      - name: Checkout capnp-ls
         uses: actions/checkout@v4
-      - name: Configure CMake with Bundled CapnProto
-        run: cmake -B build -DUSE_BUNDLED_CAPNP_TOOL=ON .
-      - name: Build Project
-        run: cmake --build build
-      - name: Rename Binary for Linux x86_64
-        run: mv build/capnp-ls build/capnp-ls-linux-x86_64
+
+      - name: Checkout Cap'n Proto
+        uses: actions/checkout@v4
+        with:
+          repository: capnproto/capnproto
+          ref: ${{ matrix.capnp_ref }}
+          path: capnproto
+
+      - name: Configure
+        run: |
+          cmake -B build-${{ matrix.capnp_version }} \
+            -DCAPNP_SOURCE_DIR="${GITHUB_WORKSPACE}/capnproto/c++" .
+
+      - name: Build
+        run: cmake --build build-${{ matrix.capnp_version }}
+
+      - name: Test
+        run: ctest --test-dir build-${{ matrix.capnp_version }} --output-on-failure
+
+      - name: Rename Binary
+        run: |
+          mv \
+            build-${{ matrix.capnp_version }}/capnp-ls \
+            build-${{ matrix.capnp_version }}/capnp-ls-linux-x86_64-capnp-${{ matrix.capnp_version }}
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: capnp-ls-linux-x86_64
-          path: build/capnp-ls-linux-x86_64
+          name: capnp-ls-linux-x86_64-capnp-${{ matrix.capnp_version }}
+          path: build-${{ matrix.capnp_version }}/capnp-ls-linux-x86_64-capnp-${{ matrix.capnp_version }}
 
   release:
     name: Create GitHub Release
@@ -66,22 +99,17 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Download Linux x86_64 Artifact
+      - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: capnp-ls-linux-x86_64
           path: artifacts
 
       - name: Grant Execute Permission
-        run: chmod +x artifacts/capnp-ls-linux-x86_64
+        run: chmod +x artifacts/*/*
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            artifacts/capnp-ls-linux-x86_64
+          files: artifacts/*/*
           draft: false
           prerelease: false
