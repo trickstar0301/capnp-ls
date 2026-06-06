@@ -25,8 +25,14 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 build_dir="${repo_root}/build-release-macos-arm64-capnp-${capnp_version}"
 dist_dir="${repo_root}/dist"
 asset_name="capnp-ls-macos-arm64-capnp-${capnp_version}"
+cxx_standard="17"
+
+if [[ "${capnp_version}" == "2.0-dev" ]]; then
+  cxx_standard="23"
+fi
 
 cmake -B "${build_dir}" \
+  -DCMAKE_CXX_STANDARD="${cxx_standard}" \
   -DCAPNP_SOURCE_DIR="${capnp_source_dir}" \
   -DCAPNP_LS_BUILD_TESTS=ON \
   "${repo_root}"

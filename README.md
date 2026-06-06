@@ -9,7 +9,8 @@ A language server that provides IDE features for Cap'n Proto schema files, inclu
 - Supported OS: Linux, macOS arm64
 - CMake
 - Cap'n Proto C++ source tree
-- A C++17-capable compiler
+- A C++17-capable compiler for Cap'n Proto `v1.1.0` and `v1.2.0`
+- A C++23-capable compiler and standard library for Cap'n Proto `v2` / `2.0-dev`
 
 ### Build Instructions
 
@@ -17,6 +18,13 @@ Build the language server against a Cap'n Proto C++ source checkout:
 
 ```bash
 cmake -B build -DCAPNP_SOURCE_DIR=/path/to/capnproto/c++ .
+cmake --build build
+```
+
+When building against Cap'n Proto `v2` / `2.0-dev`, pass C++23 explicitly:
+
+```bash
+cmake -B build -DCMAKE_CXX_STANDARD=23 -DCAPNP_SOURCE_DIR=/path/to/capnproto/c++ .
 cmake --build build
 ```
 

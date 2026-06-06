@@ -6,7 +6,9 @@ message(STATUS "C++ Compiler ID: ${CMAKE_CXX_COMPILER_ID}")
 message(STATUS "C++ Compiler version: ${CMAKE_CXX_COMPILER_VERSION}")
 message(STATUS "C++ flags: ${CMAKE_CXX_FLAGS}")
 
-set(CMAKE_CXX_STANDARD 17)
+if(NOT DEFINED CMAKE_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD 17)
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(exe_name capnp-ls)
 
