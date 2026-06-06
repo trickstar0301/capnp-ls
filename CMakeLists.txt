@@ -68,6 +68,7 @@ if(CAPNP_LS_BUILD_TESTS)
     target_link_libraries(capnp-ls-linked-compiler-test PRIVATE
         capnpc
         capnp
+        kj-async
         kj
     )
     target_include_directories(capnp-ls-linked-compiler-test PRIVATE
