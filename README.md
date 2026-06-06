@@ -6,39 +6,64 @@ A language server that provides IDE features for Cap'n Proto schema files, inclu
 
 ### Prerequisites
 
-- Supported OS: Linux, macOS
+- Supported OS: Linux, macOS arm64
 - CMake
-- Cap'n Proto libraries (version 1.1.0 or higher)
+- Cap'n Proto C++ source tree
+- A C++17-capable compiler for Cap'n Proto `v1.1.0` and `v1.2.0`
+- A C++23-capable compiler and standard library for Cap'n Proto `v2` / `2.0-dev`
 
 ### Build Instructions
 
-You have two options for building the language server:
-
-#### Option 1: Using System Cap'n Proto
-
-If you already have Cap'n Proto installed on your system:
+Build the language server against a Cap'n Proto C++ source checkout:
 
 ```bash
-cmake -B build .
+cmake -B build -DCAPNP_SOURCE_DIR=/path/to/capnproto/c++ .
 cmake --build build
 ```
 
-With this option, you must specify the `compilerPath` in the initialization options.
-
-#### Option 2: Using Bundled Cap'n Proto
-
-If you don't have Cap'n Proto installed or prefer a self-contained build:
+When building against Cap'n Proto `v2` / `2.0-dev`, pass C++23 explicitly:
 
 ```bash
-cmake -B build -DUSE_BUNDLED_CAPNP_TOOL=ON .
+cmake -B build -DCMAKE_CXX_STANDARD=23 -DCAPNP_SOURCE_DIR=/path/to/capnproto/c++ .
 cmake --build build
 ```
 
-With this option, the `compilerPath` in the initialization options becomes optional.
+The linked compiler backend builds and links Cap'n Proto from the selected source
+tree. To support another Cap'n Proto version, build the same `capnp-ls` source
+with `CAPNP_SOURCE_DIR` pointing at that version's C++ source tree.
 
-This automatically downloads and installs Cap'n Proto, which is guaranteed to be compatible with the language server.
+Supported and tested Cap'n Proto source versions:
 
-The executable for the language server is located at `build/capnp-ls` in both cases.
+- `v1.1.0`
+- `v1.2.0`
+- `v2` / `2.0-dev`
+
+The executable for the language server is located at `build/capnp-ls`.
+
+## Release Artifacts
+
+Release artifacts are versioned by the Cap'n Proto compiler source linked into
+the server binary.
+
+Linux x86_64 artifacts are built by CI:
+
+- `capnp-ls-linux-x86_64-capnp-1.1.0`
+- `capnp-ls-linux-x86_64-capnp-1.2.0`
+- `capnp-ls-linux-x86_64-capnp-2.0-dev`
+
+macOS is supported for arm64 only. macOS arm64 artifacts are built locally by a
+maintainer and uploaded manually to the GitHub release:
+
+- `capnp-ls-macos-arm64-capnp-1.1.0`
+- `capnp-ls-macos-arm64-capnp-1.2.0`
+- `capnp-ls-macos-arm64-capnp-2.0-dev`
+
+To build a macOS arm64 release artifact locally:
+
+```bash
+scripts/build-macos-arm64-release.sh 1.2.0 /path/to/capnproto/c++
+gh release upload v0.0.1 dist/capnp-ls-macos-arm64-capnp-1.2.0 --clobber
+```
 
 ## Language Server Protocol Support
 
@@ -50,7 +75,6 @@ The language server requires the following initialization options:
 {
   "initializationOptions": {
     "capnp": {
-      "compilerPath": "/path/to/capnp",
       "importPaths": [
         "path/to/schema/imports"
       ]
@@ -58,9 +82,7 @@ The language server requires the following initialization options:
   }
 }
 ```
-Required fields:
-- `compilerPath`: The path to the Cap'n Proto compiler executable.
-  - When built with `-DUSE_BUNDLED_CAPNP_TOOL=ON`, this path is optional as the bundled compiler will be used by default.
+Fields:
 - `importPaths`: An array of import paths for Cap'n Proto schemas.
   - When multiple import paths are provided, they are searched in the specified order, similar to how the Cap'n Proto compiler operates.
 
@@ -74,14 +96,12 @@ Required fields:
 
 ## Current Limitations
 
-- Symbol resolution for imports (e.g., `import "/common.capnp"`) currently requires opening the imported file first.
 - Limited support for single workspace folders.
 
 ## Upcoming Features
 
 - Autocomplete feature that includes ordinals
 - Formatting feature
-- Windows support
 
 ## Sample VSCode Extension
 
@@ -93,8 +113,8 @@ The `samples` directory contains a complete VSCode extension that demonstrates h
 2. Set up the extension:
    ```bash
    cd samples
-   npm install
-   npm run compile
+   pnpm install
+   pnpm compile
    ```
 3. Launch the extension in debug mode:
    - Run "Launch Client" from the Run/Debug view

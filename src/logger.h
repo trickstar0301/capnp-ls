@@ -7,6 +7,7 @@
 
 #include "stdout_writer.h"
 #include <capnp/compat/json.h>
+#include <capnp/message.h>
 #include <cstdlib>
 #include <kj/debug.h>
 #include <kj/exception.h>
@@ -68,7 +69,7 @@ public:
     kj::String fullMessage = kj::str(file, ":", line, ": ", text);
 
     // Send to LSP client
-    sendLspLogMessage(severity, kj::mv(fullMessage));
+    (void)sendLspLogMessage(severity, kj::mv(fullMessage));
   }
 
 private:

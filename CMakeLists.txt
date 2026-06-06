@@ -1,16 +1,24 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.16)
 project("capnp-ls" CXX)
 
-# 使用されるコンパイラの情報を表示
 message(STATUS "C++ Compiler: ${CMAKE_CXX_COMPILER}")
 message(STATUS "C++ Compiler ID: ${CMAKE_CXX_COMPILER_ID}")
 message(STATUS "C++ Compiler version: ${CMAKE_CXX_COMPILER_VERSION}")
 message(STATUS "C++ flags: ${CMAKE_CXX_FLAGS}")
 
-set(CMAKE_CXX_STANDARD 17)
+if(NOT DEFINED CMAKE_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD 17)
+endif()
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(exe_name capnp-ls)
 
-option(USE_BUNDLED_CAPNP_TOOL "Use bundled (self-built) Cap'n Proto tool and library" OFF)
+option(CAPNP_LS_BUILD_TESTS "Build capnp-ls tests" ON)
+set(CAPNP_SOURCE_DIR "" CACHE PATH "Path to Cap'n Proto C++ source directory containing src/capnp/compiler")
+
+if(CAPNP_SOURCE_DIR)
+    get_filename_component(CAPNP_SOURCE_DIR "${CAPNP_SOURCE_DIR}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+    set(CAPNP_SOURCE_DIR "${CAPNP_SOURCE_DIR}" CACHE PATH "Path to Cap'n Proto C++ source directory containing src/capnp/compiler" FORCE)
+endif()
 
 add_executable(${exe_name}
     src/main.cpp
@@ -19,77 +27,56 @@ add_executable(${exe_name}
     src/lsp_message_handler.cpp
     src/lsp_types.cpp
     src/utils.cpp
-    src/subprocess_runner.cpp
+    src/linked_compiler.cpp
     src/compilation_manager.cpp
     src/symbol_resolver.cpp
-    src/compile_error_parser.cpp
 )
 
-if(USE_BUNDLED_CAPNP_TOOL)
-    include(ExternalProject)
+if(NOT EXISTS "${CAPNP_SOURCE_DIR}/src/capnp/compiler/compiler.h")
+    message(FATAL_ERROR "CAPNP_SOURCE_DIR must point to a Cap'n Proto C++ source directory with src/capnp/compiler/compiler.h")
+endif()
 
-    set(CAPNP_VERSION 1.1.0)
-    set(CAPNP_INSTALL_DIR ${CMAKE_BINARY_DIR}/capnproto-${CAPNP_VERSION})
+set(BUILD_TESTING OFF CACHE BOOL "Disable Cap'n Proto subproject tests" FORCE)
+add_subdirectory("${CAPNP_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/capnproto-build" EXCLUDE_FROM_ALL)
 
-    ExternalProject_Add(
-        capnproto_external
-        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-        URL "https://capnproto.org/capnproto-c++-${CAPNP_VERSION}.tar.gz"
-        CONFIGURE_COMMAND ./configure --prefix=${CAPNP_INSTALL_DIR} --without-fibers
-        BUILD_COMMAND make -j6 check
-        INSTALL_COMMAND make install
-        BUILD_IN_SOURCE 1
+target_sources(${exe_name} PRIVATE
+    "${CAPNP_SOURCE_DIR}/src/capnp/compiler/module-loader.c++"
+)
+target_include_directories(${exe_name} BEFORE PRIVATE ${CAPNP_SOURCE_DIR}/src)
+target_compile_definitions(${exe_name} PRIVATE
+    CAPNP_LS_CAPNP_SOURCE_DIR="${CAPNP_SOURCE_DIR}"
+)
+target_link_libraries(${exe_name} PRIVATE
+    capnp-json
+    capnpc
+    kj-async
+)
+
+if(CAPNP_LS_BUILD_TESTS)
+    enable_testing()
+    add_executable(capnp-ls-linked-compiler-test
+        tests/linked_compiler_test.cpp
+        src/linked_compiler.cpp
+        src/symbol_resolver.cpp
     )
-
-    set(CAPNP_INCLUDE_DIR ${CAPNP_INSTALL_DIR}/include)
-    set(CAPNP_LIB_DIR ${CAPNP_INSTALL_DIR}/lib)
-    set(CAPNP_EXECUTABLE ${CAPNP_INSTALL_DIR}/bin/capnp)
-
-    add_library(capnp STATIC IMPORTED)
-    set_target_properties(capnp PROPERTIES
-        IMPORTED_LOCATION ${CAPNP_LIB_DIR}/libcapnp.a
+    target_sources(capnp-ls-linked-compiler-test PRIVATE
+        "${CAPNP_SOURCE_DIR}/src/capnp/compiler/module-loader.c++"
     )
-
-    add_library(capnp-rpc STATIC IMPORTED)
-    set_target_properties(capnp-rpc PROPERTIES
-        IMPORTED_LOCATION ${CAPNP_LIB_DIR}/libcapnp-rpc.a
+    target_include_directories(capnp-ls-linked-compiler-test BEFORE PRIVATE
+        ${CAPNP_SOURCE_DIR}/src
     )
-
-    add_library(capnp-json STATIC IMPORTED)
-    set_target_properties(capnp-json PROPERTIES
-        IMPORTED_LOCATION ${CAPNP_LIB_DIR}/libcapnp-json.a
-    )
-
-    add_library(kj STATIC IMPORTED)
-    set_target_properties(kj PROPERTIES
-        IMPORTED_LOCATION ${CAPNP_LIB_DIR}/libkj.a
-    )
-
-    add_library(kj-async STATIC IMPORTED)
-    set_target_properties(kj-async PROPERTIES
-        IMPORTED_LOCATION ${CAPNP_LIB_DIR}/libkj-async.a
-    )
-
-    add_dependencies(${exe_name} capnproto_external)
-    target_include_directories(${exe_name} PRIVATE ${CAPNP_INCLUDE_DIR})
-    target_link_directories(${exe_name} PRIVATE ${CAPNP_LIB_DIR})
-
-    find_package(Threads)
-    target_link_libraries(${exe_name} PRIVATE
-        capnp-json
-        capnp-rpc
+    target_link_libraries(capnp-ls-linked-compiler-test PRIVATE
+        capnpc
         capnp
         kj-async
         kj
-        ${CMAKE_THREAD_LIBS_INIT}
     )
-
-    target_compile_definitions(${exe_name} PRIVATE BUNDLED_CAPNP_EXECUTABLE="${CAPNP_EXECUTABLE}")
-else()
-    find_package(CapnProto REQUIRED)
-
-    target_link_libraries(${exe_name} PRIVATE
-        CapnProto::capnp-rpc
-        CapnProto::capnp-json
+    target_include_directories(capnp-ls-linked-compiler-test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
     )
+    target_compile_definitions(capnp-ls-linked-compiler-test PRIVATE
+        CAPNP_LS_TEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/samples/client/testFixture"
+        CAPNP_LS_CAPNP_SOURCE_DIR="${CAPNP_SOURCE_DIR}"
+    )
+    add_test(NAME linked-compiler COMMAND capnp-ls-linked-compiler-test)
 endif()

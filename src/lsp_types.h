@@ -35,6 +35,7 @@ constexpr const char LSP_RESULT[] = "result";
   MACRO(DID_CHANGE_WATCHED_FILES, "workspace/didChangeWatchedFiles")           \
   MACRO(DID_SAVE, "textDocument/didSave")                                      \
   MACRO(DID_CHANGE, "textDocument/didChange")                                  \
+  MACRO(DID_CLOSE, "textDocument/didClose")                                    \
   MACRO(INITIALIZED, "initialized")                                            \
   MACRO(SET_TRACE, "$/setTrace")                                               \
   MACRO(CANCEL_REQUEST, "$/cancelRequest")                                     \

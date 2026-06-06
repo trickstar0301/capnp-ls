@@ -87,36 +87,56 @@ kj::String extractFilePath(
   auto fs = kj::newDiskFilesystem();
   const kj::Directory &currentDir = fs->getCurrent();
   auto currentPath = fs->getCurrentPath();
-  if (currentDir.exists(relativeFilePath)) {
+  auto workspaceRelativePath =
+      kj::Path::parse(workspacePath.startsWith("/")
+                          ? workspacePath.slice(1)
+                          : workspacePath);
+  auto findInImportPath = [&](
+                              kj::StringPtr importPath)
+      -> kj::Maybe<kj::String> {
+    if (importPath.startsWith("/")) {
+      auto parsed = kj::Path::parse(importPath.slice(1));
+      auto eval = parsed.eval(relativeFilePathString);
+      if (fs->getRoot().exists(eval)) {
+        KJ_LOG(INFO, "Found file in absolute import path", eval.toNativeString());
+        return eval.toNativeString(true);
+      }
+    } else {
+      auto workspaceImportPath =
+          workspaceRelativePath.eval(importPath).eval(relativeFilePathString);
+      if (fs->getRoot().exists(workspaceImportPath)) {
+        KJ_LOG(
+            INFO,
+            "Found file in workspace-relative import path",
+            workspaceImportPath.toNativeString());
+        return workspaceImportPath.toNativeString(true);
+      }
+    }
+
+    return nullptr;
+  };
+
+  auto workspaceFilePath = workspaceRelativePath.eval(relativeFilePathString);
+  if (fs->getRoot().exists(workspaceFilePath)) {
     // exists in workspace
     KJ_LOG(INFO, "Found file in workspace", relativeFilePathString);
+    return workspaceFilePath.toNativeString(true);
+  } else if (currentDir.exists(relativeFilePath)) {
+    // exists relative to current process directory
+    KJ_LOG(INFO, "Found file in current directory", relativeFilePathString);
     return currentPath.eval(relativeFilePathString).toNativeString(true);
   } else {
     // Try import paths
     for (const auto &importPath : importPaths) {
-      if (importPath.startsWith("/")) {
-        // absolute path
-        auto parsed = kj::Path::parse(importPath.slice(1));
-        auto eval = parsed.evalNative(relativeFilePathString);
-        if (fs->getRoot().exists(eval)) {
-          KJ_LOG(
-              INFO, "Found file in absoluteimport path", eval.toNativeString());
-          return eval.toNativeString(true);
-        }
-      } else {
-        // relative path
-        auto parsed = kj::Path::parse(importPath);
-        auto eval = parsed.eval(relativeFilePathString);
-        if (currentDir.exists(eval)) {
-          KJ_LOG(
-              INFO,
-              "Found file in relative import path",
-              eval.toNativeString());
-          return currentPath.eval(importPath)
-              .eval(relativeFilePathString)
-              .toNativeString(true);
-        }
+      KJ_IF_MAYBE (filePath, findInImportPath(importPath)) {
+        return kj::mv(*filePath);
       }
+    }
+
+    KJ_IF_MAYBE (
+        filePath,
+        findInImportPath(kj::str(CAPNP_LS_CAPNP_SOURCE_DIR, "/src"))) {
+      return kj::mv(*filePath);
     }
   }
   // If file not found anywhere, throw exception
@@ -124,7 +144,7 @@ kj::String extractFilePath(
 }
 
 int SymbolResolver::resolve(
-    kj::Own<capnp::MessageReader> reader,
+    capnp::schema::CodeGeneratorRequest::Reader request,
     kj::HashMap<kj::String, kj::HashMap<Range, uint64_t>> &positionToNodeIdMap,
     kj::HashMap<uint64_t, kj::Own<Location>> &nodeLocationMap,
     const kj::Vector<kj::String> &importPaths,
@@ -132,8 +152,6 @@ int SymbolResolver::resolve(
   try {
     kj::HashMap<uint64_t, capnp::schema::Node::SourceInfo::Reader>
         sourceInfoMap;
-
-    auto request = reader->getRoot<capnp::schema::CodeGeneratorRequest>();
 
     kj::HashMap<
         uint64_t,
