@@ -100,7 +100,15 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
           break;
         }
       } else {
-        KJ_LOG(ERROR, "Unknown method", method.cStr());
+        KJ_LOG(INFO, "Unsupported method", method.cStr());
+        CAPNP_LS_IF_SOME (requestId, maybeRequestId) {
+          CAPNP_LS_IF_SOME (
+              responseString,
+              buildErrorResponseString(*requestId, -32601, "Method not found")) {
+            (void)stdoutWriter.write(*responseString);
+          }
+          return kj::READY_NOW;
+        }
       }
 
       CAPNP_LS_IF_SOME (requestId, maybeRequestId) {
@@ -205,6 +213,45 @@ kj::Maybe<kj::String> LspMessageHandler::buildResponseString(
         responseStr);
   } catch (kj::Exception &e) {
     KJ_LOG(ERROR, "Error building response string", e.getDescription());
+    return CAPNP_LS_NONE;
+  }
+}
+
+kj::Maybe<kj::String> LspMessageHandler::buildErrorResponseString(
+    const double id,
+    int code,
+    kj::StringPtr message) {
+  try {
+    capnp::MallocMessageBuilder messageBuilder;
+    auto root = messageBuilder.initRoot<capnp::JsonValue>();
+    auto obj = root.initObject(3);
+
+    obj[0].setName(LSP_JSONRPC);
+    obj[0].getValue().setString(LSP_JSON_RPC_VERSION);
+
+    obj[1].setName(LSP_ID);
+    obj[1].getValue().setNumber(id);
+
+    obj[2].setName(LSP_ERROR);
+    auto error = obj[2].getValue().initObject(2);
+
+    error[0].setName("code");
+    error[0].getValue().setNumber(code);
+
+    error[1].setName("message");
+    error[1].getValue().setString(message);
+
+    capnp::JsonCodec codec;
+    kj::String responseStr =
+        codec.encodeRaw(messageBuilder.getRoot<capnp::JsonValue>());
+
+    return kj::str(
+        LSP_CONTENT_LENGTH_HEADER,
+        responseStr.size(),
+        LSP_HEADER_DELIMITER,
+        responseStr);
+  } catch (kj::Exception &e) {
+    KJ_LOG(ERROR, "Error building error response string", e.getDescription());
     return CAPNP_LS_NONE;
   }
 }

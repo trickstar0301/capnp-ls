@@ -12,6 +12,7 @@
 #include <fstream>
 #include <kj/async-io.h>
 #include <kj/debug.h>
+#include <string>
 #include <unistd.h>
 
 namespace {
@@ -38,6 +39,35 @@ public:
   }
 };
 
+class CapturingOutputStream final : public kj::AsyncOutputStream {
+public:
+#if CAPNP_VERSION_MAJOR >= 2
+  kj::Promise<void> write(kj::ArrayPtr<const kj::byte> buffer) override {
+    output.append(reinterpret_cast<const char *>(buffer.begin()), buffer.size());
+    return kj::READY_NOW;
+  }
+#else
+  kj::Promise<void> write(const void *buffer, size_t size) override {
+    output.append(reinterpret_cast<const char *>(buffer), size);
+    return kj::READY_NOW;
+  }
+#endif
+
+  kj::Promise<void>
+  write(kj::ArrayPtr<const kj::ArrayPtr<const kj::byte>> pieces) override {
+    for (auto piece : pieces) {
+      output.append(reinterpret_cast<const char *>(piece.begin()), piece.size());
+    }
+    return kj::READY_NOW;
+  }
+
+  kj::Promise<void> whenWriteDisconnected() override {
+    return kj::NEVER_DONE;
+  }
+
+  std::string output;
+};
+
 void require(bool condition, kj::StringPtr message) {
   if (!condition) {
     KJ_FAIL_REQUIRE(message);
@@ -61,6 +91,16 @@ void decodeJson(kj::StringPtr json, capnp::MallocMessageBuilder &builder) {
   capnp::JsonCodec codec;
   auto root = builder.initRoot<capnp::JsonValue>();
   codec.decodeRaw(kj::arrayPtr(json.begin(), json.size()), root);
+}
+
+kj::StringPtr responseJson(kj::StringPtr message) {
+  kj::StringPtr delimiter = "\r\n\r\n";
+  for (auto i = 0; i + delimiter.size() <= message.size(); ++i) {
+    if (message.slice(i, i + delimiter.size()) == delimiter) {
+      return message.slice(i + delimiter.size());
+    }
+  }
+  KJ_FAIL_REQUIRE("response should include an LSP header");
 }
 
 bool hasObjectField(
@@ -186,6 +226,37 @@ int main() {
     require(
         handler.testImportPath(0) == "override",
         "initialization option import path should be preserved");
+  }
+
+  {
+    auto stream = kj::heap<CapturingOutputStream>();
+    auto &captured = *stream;
+    capnp_ls::StdoutWriter writer(kj::mv(stream));
+    capnp_ls::LspMessageHandler handler(context, writer);
+    handler
+        .handleMessage(kj::str(
+            "Content-Length: 67\r\n\r\n",
+            R"({"jsonrpc":"2.0","id":42,"method":"textDocument/completion"})"))
+        .wait(io.waitScope);
+
+    capnp::MallocMessageBuilder response;
+    decodeJson(
+        responseJson(
+            kj::StringPtr(captured.output.data(), captured.output.size())),
+        response);
+    auto responseRoot = response.getRoot<capnp::JsonValue>().asReader();
+    auto error = getObjectField(responseRoot, "error");
+    auto code = getObjectField(error, "code");
+    auto message = getObjectField(error, "message");
+    require(
+        code.getNumber() == -32601,
+        "unknown request should return Method not found");
+    require(
+        message.getString() == "Method not found",
+        "unknown request should include a Method not found message");
+    require(
+        !hasObjectField(responseRoot, "result"),
+        "unknown request response should not include result");
   }
 
   return 0;
