@@ -38,7 +38,7 @@ Project-specific import paths are read by the language server from
 }
 ```
 
-To customize client settings, edit the `.vscode/settings.json` file in your workspace as follows:
+To customize client settings, configure them in VS Code User Settings:
 
 ```json
 {
@@ -49,8 +49,6 @@ To customize client settings, edit the `.vscode/settings.json` file in your work
     }
 }
 ```
-See [example configuration](https://github.com/trickstar0301/capnp-ls/blob/main/samples/client/testFixture/.vscode/settings.json) for more details.
-
 ## Release Artifact Availability
 
 Linux x86_64 release artifacts are built by CI. macOS arm64 release artifacts
