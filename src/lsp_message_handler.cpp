@@ -599,7 +599,7 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
   auto capsField = resultValue[0];
   capsField.setName("capabilities");
 
-  auto capabilities = capsField.getValue().initObject(4);
+  auto capabilities = capsField.getValue().initObject(3);
 
   // Set text document sync capability
   auto syncField = capabilities[0];
@@ -623,13 +623,8 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
   defField.setName("definitionProvider");
   defField.getValue().setBoolean(true);
 
-  // Set completion provider capability
-  auto compField = capabilities[2];
-  compField.setName("completionProvider");
-  compField.getValue().setBoolean(true);
-
   // Set workspace/didChangeWatchedFiles capability
-  auto watchedFilesField = capabilities[3];
+  auto watchedFilesField = capabilities[2];
   watchedFilesField.setName("workspace/didChangeWatchedFiles");
   watchedFilesField.getValue().setBoolean(true);
 

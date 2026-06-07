@@ -63,6 +63,34 @@ void decodeJson(kj::StringPtr json, capnp::MallocMessageBuilder &builder) {
   codec.decodeRaw(kj::arrayPtr(json.begin(), json.size()), root);
 }
 
+bool hasObjectField(
+    const capnp::JsonValue::Reader &value,
+    kj::StringPtr fieldName) {
+  if (!value.isObject()) {
+    return false;
+  }
+
+  for (auto field : value.getObject()) {
+    if (field.getName() == fieldName) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+capnp::JsonValue::Reader getObjectField(
+    const capnp::JsonValue::Reader &value,
+    kj::StringPtr fieldName) {
+  for (auto field : value.getObject()) {
+    if (field.getName() == fieldName) {
+      return field.getValue();
+    }
+  }
+
+  KJ_FAIL_REQUIRE("missing field", fieldName);
+}
+
 } // namespace
 
 int main() {
@@ -89,6 +117,13 @@ int main() {
     require(
         handler.testImportPathCount() == 2,
         "rootUri initialize should load .capnp-ls.json import paths");
+
+    auto responseRoot = response.getRoot<capnp::JsonValue>().asReader();
+    auto result = getObjectField(responseRoot, "result");
+    auto capabilities = getObjectField(result, "capabilities");
+    require(
+        !hasObjectField(capabilities, "completionProvider"),
+        "initialize should not advertise completion without a completion handler");
   }
 
   {
