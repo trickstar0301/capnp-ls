@@ -4,6 +4,7 @@
 // See LICENSE file in the project root for full license information.
 
 #include "compilation_manager.h"
+#include "kj_compat.h"
 #include <kj/debug.h>
 
 namespace capnp_ls {
@@ -27,7 +28,7 @@ kj::Promise<void> CompilationManager::compile(CompileParams params) {
       return kj::READY_NOW;
     }
 
-    KJ_IF_MAYBE (requestMessage, result.request) {
+    CAPNP_LS_IF_SOME (requestMessage, result.request) {
       auto request =
           (*requestMessage)->getRoot<capnp::schema::CodeGeneratorRequest>();
       SymbolResolver::resolve(

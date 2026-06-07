@@ -23,6 +23,25 @@ class LspMessageHandler {
 public:
   LspMessageHandler(ServerContext &serverContext, StdoutWriter &stdoutWriter);
   kj::Promise<void> handleMessage(kj::Maybe<kj::String> message);
+#ifdef CAPNP_LS_TESTING
+  kj::Promise<void> testHandleInitialize(
+      const capnp::JsonValue::Reader &params,
+      capnp::MallocMessageBuilder &initializeResponseBuilder) {
+    return handleInitialize(params, initializeResponseBuilder);
+  }
+  size_t testImportPathCount() const {
+    return importPaths.size();
+  }
+  kj::StringPtr testImportPath(size_t index) const {
+    return importPaths[index];
+  }
+  kj::StringPtr testWorkspacePath() const {
+    return workspacePath;
+  }
+  bool testReloadProjectConfig() {
+    return reloadProjectConfig();
+  }
+#endif
 
 private:
   kj::Maybe<kj::String>
@@ -43,12 +62,16 @@ private:
       const capnp::JsonValue::Reader &params,
       capnp::MallocMessageBuilder &formattingResponseBuilder);
   kj::Promise<void> publishDiagnostics(kj::StringPtr fileName);
+  bool reloadProjectConfig();
+  void clearCompilationState();
+  bool isProjectConfigPath(kj::StringPtr path);
 
   kj::HashMap<kj::String, kj::HashMap<Range, uint64_t>> fileSourceInfoMap;
   kj::HashMap<uint64_t, kj::Own<Location>> nodeLocationMap;
   kj::HashMap<kj::String, kj::Vector<Diagnostic>> diagnosticMap;
   kj::String workspacePath;
   kj::Vector<kj::String> importPaths;
+  bool importPathsConfiguredByInitialization = false;
   ServerContext &context;
   kj::Own<CompilationManager> compilationManager;
   StdoutWriter &stdoutWriter;

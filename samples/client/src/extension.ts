@@ -5,6 +5,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import { workspace, ExtensionContext, window, commands } from 'vscode';
 import * as https from 'https';
 
@@ -20,7 +21,7 @@ type ReleasePlatform = 'linux-x86_64' | 'macos-arm64';
 
 // Default language server version for downloadable release binaries.
 const DEFAULT_SERVER_VERSION = 'v0.0.2';
-const DEFAULT_CAPNP_VERSION = '1.2.0';
+const DEFAULT_CAPNP_CHANNEL = 'v1';
 
 export async function activate(context: ExtensionContext) {
 	if (process.platform === 'win32') {
@@ -35,7 +36,7 @@ export async function activate(context: ExtensionContext) {
 	context.subscriptions.push(
 		workspace.onDidChangeConfiguration(async event => {
 			if (
-				event.affectsConfiguration('capnp-ls-client.languageServer.capnpVersion') ||
+				event.affectsConfiguration('capnp-ls-client.languageServer.capnpChannel') ||
 				event.affectsConfiguration('capnp-ls-client.languageServer.version') ||
 				event.affectsConfiguration('capnp-ls-client.languageServer.path')
 			) {
@@ -61,14 +62,10 @@ export async function activate(context: ExtensionContext) {
 	// Get configuration
 	const config = workspace.getConfiguration('capnp-ls-client');
 	const serverPathRaw = config.get<string>('languageServer.path');
-	const importPathsRaw = config.get<string[]>('compiler.importPaths') || [];
 	const extraEnv = config.get<Record<string, string | number>>('server.extraEnv') || {};
 	// Get server version from configuration or use default
 	const serverVersion = config.get<string>('languageServer.version') || DEFAULT_SERVER_VERSION;
-	const capnpVersion = config.get<string>('languageServer.capnpVersion') || DEFAULT_CAPNP_VERSION;
-
-	// Resolve environment variables in paths
-	const resolvedImportPaths = importPathsRaw.map(p => resolveEnvVars(p));
+	const capnpChannel = config.get<string>('languageServer.capnpChannel') || DEFAULT_CAPNP_CHANNEL;
 
 	// Helper function to resolve environment variables in paths
 	function resolveEnvVars(pathStr: string): string {
@@ -112,7 +109,7 @@ export async function activate(context: ExtensionContext) {
 			: context.asAbsolutePath(serverPath);
 	} else {
 		try {
-			resolvedServerPath = await findLanguageServer(context, serverVersion, capnpVersion);
+			resolvedServerPath = await findLanguageServer(context, serverVersion, capnpChannel);
 		} catch (err) {
 			const message = errorMessage(err);
 			log(message);
@@ -121,9 +118,21 @@ export async function activate(context: ExtensionContext) {
 		}
 	}
 
-	async function findLanguageServer(context: ExtensionContext, version: string, capnpVersion: string): Promise<string> {
+	function normalizeCapnpChannel(capnpChannel: string): string {
+		switch (capnpChannel) {
+			case 'v1':
+				return 'v1';
+			case 'v2':
+				return 'v2';
+			default:
+				return capnpChannel;
+		}
+	}
+
+	async function findLanguageServer(context: ExtensionContext, version: string, capnpChannel: string): Promise<string> {
 		const extensionPath = context.extensionPath;
-		const versionedBinaryName = `capnp-ls-capnp-${capnpVersion}`;
+		const normalizedCapnpChannel = normalizeCapnpChannel(capnpChannel);
+		const versionedBinaryName = `capnp-ls-capnp-${normalizedCapnpChannel}`;
 		const extensionVersionedBinaryPath = path.join(extensionPath, versionedBinaryName);
 
 		if (fs.existsSync(extensionVersionedBinaryPath)) {
@@ -140,8 +149,8 @@ export async function activate(context: ExtensionContext) {
 		if (releasePlatform && !fs.existsSync(extensionVersionedBinaryPath)) {
 			log(`Binary not found at ${extensionVersionedBinaryPath} and we're on ${releasePlatform}, attempting to download...`);
 			try {
-				await downloadCapnpLs(extensionVersionedBinaryPath, version, capnpVersion, releasePlatform);
-				log(`Successfully downloaded capnp-ls version ${version} for Cap'n Proto ${capnpVersion} to ${extensionVersionedBinaryPath}`);
+				await downloadCapnpLs(extensionVersionedBinaryPath, version, normalizedCapnpChannel, releasePlatform);
+				log(`Successfully downloaded capnp-ls version ${version} for Cap'n Proto ${normalizedCapnpChannel} to ${extensionVersionedBinaryPath}`);
 				return extensionVersionedBinaryPath;
 			} catch (err) {
 				log(`Failed to download capnp-ls: ${errorMessage(err)}`);
@@ -149,200 +158,89 @@ export async function activate(context: ExtensionContext) {
 		}
 
 		throw new Error(
-			`Could not find capnp-ls linked with Cap'n Proto ${capnpVersion}. ` +
+			`Could not find capnp-ls for Cap'n Proto ${normalizedCapnpChannel}. ` +
 			`Set capnp-ls-client.languageServer.path explicitly or install ${versionedBinaryName} in the extension directory.`
 		);
 	}
 
-	function downloadCapnpLs(targetPath: string, version: string, capnpVersion: string, platform: ReleasePlatform): Promise<void> {
-		const assetName = `capnp-ls-${platform}-capnp-${capnpVersion}`;
+	function downloadCapnpLs(targetPath: string, version: string, capnpChannel: string, platform: ReleasePlatform): Promise<void> {
+		const assetName = `capnp-ls-${platform}-capnp-${capnpChannel}`;
 		const url = `https://github.com/trickstar0301/capnp-ls/releases/download/${version}/${assetName}`;
-		log(`Downloading capnp-ls version ${version} for Cap'n Proto ${capnpVersion} from ${url} to ${targetPath}`);
+		log(`Downloading capnp-ls version ${version} for Cap'n Proto ${capnpChannel} from ${url} to ${targetPath}`);
+		return downloadFile(url, targetPath)
+			.then(() => verifyDownloadedChecksum(targetPath, `${url}.sha256`))
+			.then(() => fs.promises.chmod(targetPath, 0o755))
+			.then(() => {
+				log('Download completed, checksum verified, and file made executable');
+			})
+			.catch(err => {
+				fs.unlink(targetPath, () => {});
+				throw err;
+			});
+	}
 
+	function requestUrl(url: string): Promise<Buffer> {
 		return new Promise((resolve, reject) => {
-			// Open the file only after the download response is accepted.
-			let file: fs.WriteStream | null = null;
-			
-			// GitHub may require a User-Agent header.
-			const options = {
+			const request = https.get(url, {
 				headers: {
 					'User-Agent': 'VSCode-CapnProto-Extension',
 					'Accept': 'application/octet-stream'
-				},
-				followRedirects: true
-			};
-
-			log(`Sending request with options: ${JSON.stringify(options)}`);
-
-			const request = https.get(url, options, (response) => {
-				log(`Received response with status code: ${response.statusCode}`);
-				log(`Response headers: ${JSON.stringify(response.headers)}`);
-
-				if (response.statusCode === 302 || response.statusCode === 301) {
+				}
+			}, response => {
+				if (response.statusCode === 301 || response.statusCode === 302) {
 					const redirectUrl = response.headers.location;
+					response.resume();
 					if (!redirectUrl) {
 						reject(new Error(`Redirect location not found: ${response.statusCode} ${response.statusMessage}`));
 						return;
 					}
-
-					log(`Following redirect to: ${redirectUrl}`);
-
-					request.destroy();
-
-					const redirectUrlObj = new URL(redirectUrl);
-					const redirectOptions = {
-						host: redirectUrlObj.hostname,
-						path: redirectUrlObj.pathname + redirectUrlObj.search,
-						headers: {
-							'User-Agent': 'VSCode-CapnProto-Extension',
-							'Accept': 'application/octet-stream'
-						}
-					};
-
-					log(`Sending redirect request with options: ${JSON.stringify(redirectOptions)}`);
-
-					https.get(redirectOptions, (redirectResponse) => {
-						log(`Redirect response status: ${redirectResponse.statusCode}`);
-						log(`Redirect response headers: ${JSON.stringify(redirectResponse.headers)}`);
-
-						if (redirectResponse.statusCode !== 200) {
-							reject(new Error(`Failed to download from redirect: ${redirectResponse.statusCode} ${redirectResponse.statusMessage}`));
-							return;
-						}
-
-						file = fs.createWriteStream(targetPath);
-						let downloadedBytes = 0;
-
-						redirectResponse.on('data', (chunk) => {
-							downloadedBytes += chunk.length;
-							if (downloadedBytes % (1024 * 1024) === 0) {
-								log(`Downloaded ${downloadedBytes / 1024 / 1024} MB...`);
-							}
-						});
-
-						redirectResponse.pipe(file);
-
-						file.on('finish', () => {
-							if (file) file.close();
-
-							fs.stat(targetPath, (err, stats) => {
-								if (err) {
-									log(`Error checking file size: ${err.message}`);
-									reject(err);
-									return;
-								}
-
-								if (stats.size === 0) {
-									log('Error: Downloaded file is empty (0 bytes)');
-									fs.unlink(targetPath, () => {});
-									reject(new Error('Downloaded file is empty'));
-									return;
-								}
-
-								log(`Downloaded file size: ${stats.size} bytes`);
-
-								fs.chmod(targetPath, 0o755, (err) => {
-									if (err) {
-										log(`Error making file executable: ${err.message}`);
-										reject(err);
-										return;
-									}
-									log('Download completed and file made executable');
-									resolve();
-								});
-							});
-						});
-
-						file.on('error', (err) => {
-							if (file) file.close();
-							fs.unlink(targetPath, () => {}); // Delete the file on error
-							log(`Error downloading file from redirect: ${err.message}`);
-							reject(err);
-						});
-					}).on('error', (err) => {
-						fs.unlink(targetPath, () => {}); // Delete the file on error
-						log(`Error following redirect: ${err.message}`);
-						reject(err);
-					});
-
+					resolve(requestUrl(redirectUrl));
 					return;
 				}
 
 				if (response.statusCode !== 200) {
+					response.resume();
 					reject(new Error(`Failed to download: ${response.statusCode} ${response.statusMessage}`));
 					return;
 				}
 
-				file = fs.createWriteStream(targetPath);
-				let downloadedBytes = 0;
-
-				response.on('data', (chunk) => {
-					downloadedBytes += chunk.length;
-					if (downloadedBytes % (1024 * 1024) === 0) {
-						log(`Downloaded ${downloadedBytes / 1024 / 1024} MB...`);
-					}
-				});
-
-				response.pipe(file);
-
-				file.on('finish', () => {
-					if (file) file.close();
-
-					fs.stat(targetPath, (err, stats) => {
-						if (err) {
-							log(`Error checking file size: ${err.message}`);
-							reject(err);
-							return;
-						}
-
-						if (stats.size === 0) {
-							log('Error: Downloaded file is empty (0 bytes)');
-							fs.unlink(targetPath, () => {});
-							reject(new Error('Downloaded file is empty'));
-							return;
-						}
-
-						log(`Downloaded file size: ${stats.size} bytes`);
-
-						fs.chmod(targetPath, 0o755, (err) => {
-							if (err) {
-								log(`Error making file executable: ${err.message}`);
-								reject(err);
-								return;
-							}
-							log('Download completed and file made executable');
-							resolve();
-						});
-					});
-				});
-
-				file.on('error', (err) => {
-					if (file) file.close();
-					fs.unlink(targetPath, () => {}); // Delete the file on error
-					log(`Error downloading file: ${err.message}`);
-					reject(err);
-				});
-			}).on('error', (err) => {
-				if (file) file.close();
-				fs.unlink(targetPath, () => {}); // Delete the file on error
-				log(`Error downloading file: ${err.message}`);
-				reject(err);
-			});
+				const chunks: Buffer[] = [];
+				response.on('data', chunk => chunks.push(Buffer.from(chunk)));
+				response.on('end', () => resolve(Buffer.concat(chunks)));
+				response.on('error', reject);
+			}).on('error', reject);
 
 			request.setTimeout(30000, () => {
 				request.destroy();
-				if (file) file.close();
-				fs.unlink(targetPath, () => {});
 				reject(new Error('Download timed out after 30 seconds'));
 			});
 		});
 	}
 
-	log(`Server path: ${resolvedServerPath}`);
-	log(`Cap'n Proto linked version: ${capnpVersion}`);
-	log(`Import paths: ${resolvedImportPaths.join(', ')}`);
+	async function downloadFile(url: string, targetPath: string): Promise<void> {
+		const data = await requestUrl(url);
+		if (data.length === 0) {
+			throw new Error('Downloaded file is empty');
+		}
+		await fs.promises.writeFile(targetPath, data, { mode: 0o644 });
+		log(`Downloaded file size: ${data.length} bytes`);
+	}
 
-	// Server options
+	async function verifyDownloadedChecksum(targetPath: string, checksumUrl: string): Promise<void> {
+		const checksumText = (await requestUrl(checksumUrl)).toString('utf8');
+		const expected = checksumText.trim().split(/\s+/)[0];
+		const file = await fs.promises.readFile(targetPath);
+		const actual = crypto.createHash('sha256').update(file).digest('hex');
+		if (expected !== actual) {
+			throw new Error(`Checksum mismatch for ${targetPath}: expected ${expected}, got ${actual}`);
+		}
+		log('Checksum verified');
+	}
+
+	log(`Server path: ${resolvedServerPath}`);
+	log(`Cap'n Proto channel: ${normalizeCapnpChannel(capnpChannel)}`);
+
+		// Server options
 	const serverOptions: ServerOptions = {
 		command: resolvedServerPath,
 		args: [],
@@ -358,15 +256,13 @@ export async function activate(context: ExtensionContext) {
 	const clientOptions: LanguageClientOptions = {
 		documentSelector: [{ scheme: 'file', language: 'capnp' }],
 		synchronize: {
-			fileEvents: workspace.createFileSystemWatcher('**/*.capnp')
+			fileEvents: [
+				workspace.createFileSystemWatcher('**/*.capnp'),
+				workspace.createFileSystemWatcher('**/.capnp-ls.json')
+			]
 		},
 		outputChannel: outputChannel,
 		workspaceFolder: workspaceFolder,
-		initializationOptions: {
-			capnp: {
-				importPaths: resolvedImportPaths
-			}
-		},
 		middleware: {
 			provideDefinition: (document, position, token, next) => {
 				log(`Definition requested at position: ${position.line}:${position.character}`);

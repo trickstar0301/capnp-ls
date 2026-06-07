@@ -26,13 +26,11 @@ suite('Cap\'n Proto Language Server Test Suite', () => {
         const config = vscode.workspace.getConfiguration('capnp-ls-client');
         console.log('Configuration:', {
             serverPath: config.get('languageServer.path'),
-            capnpVersion: config.get('languageServer.capnpVersion'),
-            importPaths: config.get('compiler.importPaths')
+            capnpChannel: config.get('languageServer.capnpChannel')
         });
 
         assert.ok(config.get('languageServer.path'), 'Language server path is not configured');
-        assert.ok(config.get('languageServer.capnpVersion'), 'Cap\'n Proto linked version is not configured');
-        assert.ok(Array.isArray(config.get('compiler.importPaths')), 'Import paths are not configured');
+        assert.ok(config.get('languageServer.capnpChannel'), 'Cap\'n Proto channel is not configured');
     });
 
     test('Open Document', async () => {

@@ -2,6 +2,50 @@
 
 A language server that provides IDE features for Cap'n Proto schema files, including go-to-definition and automatic recompilation.
 
+## Installing
+
+Install the latest release binary:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/trickstar0301/capnp-ls/main/install.sh | sh
+```
+
+Or with `wget`:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/trickstar0301/capnp-ls/main/install.sh | sh
+```
+
+By default, the installer downloads the `capnp-v1` binary into
+`$HOME/.local/bin`. Override the release version, install directory, or linked
+Cap'n Proto channel with environment variables:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/trickstar0301/capnp-ls/main/install.sh \
+  | CAPNP_LS_VERSION=v0.0.2 \
+    CAPNP_LS_INSTALL_DIR="$HOME/.local/bin" \
+    CAPNP_LS_CAPNP_VERSION=v2 \
+    sh
+```
+
+The installer verifies the release asset against its `.sha256` file before
+placing the executable on your `PATH`.
+
+## Claude Code and Copilot Plugins
+
+The Claude Code and Copilot plugins do not bundle the language server binary.
+Install `capnp-ls` first, then enable a plugin that starts:
+
+```json
+{
+  "command": "capnp-ls",
+  "args": ["--stdio"]
+}
+```
+
+Plugin marketplace definitions are maintained separately from this repository so
+one marketplace can host all `trickstar0301` plugins.
+
 ## Building from Source
 
 ### Prerequisites
@@ -9,8 +53,8 @@ A language server that provides IDE features for Cap'n Proto schema files, inclu
 - Supported OS: Linux, macOS arm64
 - CMake
 - Cap'n Proto C++ source tree
-- A C++17-capable compiler for Cap'n Proto `v1.1.0` and `v1.2.0`
-- A C++23-capable compiler and standard library for Cap'n Proto `v2` / `2.0-dev`
+- A C++17-capable compiler for Cap'n Proto `v1.1.0` through `v1.4.0`
+- A C++23-capable compiler and standard library for Cap'n Proto `v2`
 
 ### Build Instructions
 
@@ -21,7 +65,7 @@ cmake -B build -DCAPNP_SOURCE_DIR=/path/to/capnproto/c++ .
 cmake --build build
 ```
 
-When building against Cap'n Proto `v2` / `2.0-dev`, pass C++23 explicitly:
+When building against Cap'n Proto `v2`, pass C++23 explicitly:
 
 ```bash
 cmake -B build -DCMAKE_CXX_STANDARD=23 -DCAPNP_SOURCE_DIR=/path/to/capnproto/c++ .
@@ -36,40 +80,78 @@ Supported and tested Cap'n Proto source versions:
 
 - `v1.1.0`
 - `v1.2.0`
-- `v2` / `2.0-dev`
+- `v1.3.0`
+- `v1.4.0`
+- `v2`
 
 The executable for the language server is located at `build/capnp-ls`.
 
 ## Release Artifacts
 
-Release artifacts are versioned by the Cap'n Proto compiler source linked into
-the server binary.
+Release artifacts are versioned by the Cap'n Proto compatibility channel. Each
+artifact is published with a matching `.sha256` file. The `capnp-v1` artifacts
+are built against Cap'n Proto `v1.4.0` and tested with Cap'n Proto `v1.1.0`,
+`v1.2.0`, `v1.3.0`, and `v1.4.0`. The `capnp-v2` artifacts are built against
+the Cap'n Proto `v2` branch.
 
 Linux x86_64 artifacts are built by CI:
 
-- `capnp-ls-linux-x86_64-capnp-1.1.0`
-- `capnp-ls-linux-x86_64-capnp-1.2.0`
-- `capnp-ls-linux-x86_64-capnp-2.0-dev`
+- `capnp-ls-linux-x86_64-capnp-v1`
+- `capnp-ls-linux-x86_64-capnp-v2`
 
-macOS is supported for arm64 only. macOS arm64 artifacts are built locally by a
-maintainer and uploaded manually to the GitHub release:
+macOS arm64 artifacts are built locally by a maintainer and uploaded manually to
+the GitHub release:
 
-- `capnp-ls-macos-arm64-capnp-1.1.0`
-- `capnp-ls-macos-arm64-capnp-1.2.0`
-- `capnp-ls-macos-arm64-capnp-2.0-dev`
+- `capnp-ls-macos-arm64-capnp-v1`
+- `capnp-ls-macos-arm64-capnp-v2`
 
 To build a macOS arm64 release artifact locally:
 
 ```bash
-scripts/build-macos-arm64-release.sh 1.2.0 /path/to/capnproto/c++
-gh release upload v0.0.2 dist/capnp-ls-macos-arm64-capnp-1.2.0 --clobber
+scripts/build-macos-arm64-release.sh v1 /path/to/capnproto-v1.4.0/c++
+gh release upload \
+  v0.0.2 \
+  dist/capnp-ls-macos-arm64-capnp-v1 \
+  dist/capnp-ls-macos-arm64-capnp-v1.sha256 \
+  --clobber
 ```
+
+## Project Configuration
+
+Project-specific schema settings live in `.capnp-ls.json` at the workspace root.
+Commit this file with your schemas so every editor and agent uses the same
+Cap'n Proto import paths:
+
+```json
+{
+  "importPaths": [
+    "schemas/common",
+    "vendor/capnp"
+  ]
+}
+```
+
+Fields:
+
+- `importPaths`: An array of import paths for Cap'n Proto schemas.
+  - Relative paths are resolved from the workspace root.
+  - When multiple import paths are provided, they are searched in the specified order, similar to how the Cap'n Proto compiler operates.
+
+Clients should initialize the language server with either `workspaceFolders` or
+`rootUri` so `capnp-ls` can locate the workspace root. For Neovim and similar
+clients, use `.capnp-ls.json` or `.git` as the root marker.
+
+When the client sends watched-file notifications for `.capnp-ls.json`, the
+server reloads the config without a restart. Invalid JSON keeps the last valid
+configuration; deleting `.capnp-ls.json` clears project import paths.
 
 ## Language Server Protocol Support
 
 ### Initialization
 
-The language server requires the following initialization options:
+LSP clients may still pass initialization options explicitly. When
+`initializationOptions.capnp.importPaths` is present, it takes precedence over
+`.capnp-ls.json`:
 
 ```json
 {
@@ -82,9 +164,20 @@ The language server requires the following initialization options:
   }
 }
 ```
-Fields:
-- `importPaths`: An array of import paths for Cap'n Proto schemas.
-  - When multiple import paths are provided, they are searched in the specified order, similar to how the Cap'n Proto compiler operates.
+
+For clients that support project-level LSP configuration, the equivalent
+initialization options are:
+
+```json
+{
+  "capnp": {
+    "importPaths": [
+      "schemas/common",
+      "vendor/capnp"
+    ]
+  }
+}
+```
 
 ### Go to Definition
 

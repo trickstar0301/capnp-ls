@@ -4,6 +4,8 @@
 // See LICENSE file in the project root for full license information.
 
 #include "linked_compiler.h"
+#include "kj_compat.h"
+#include "project_config.h"
 #include "symbol_resolver.h"
 #include <capnp/schema.capnp.h>
 #include <kj/debug.h>
@@ -25,7 +27,7 @@ uint64_t resolveAt(
     const kj::HashMap<capnp_ls::Range, uint64_t> &rangeMap,
     uint32_t line,
     uint32_t character) {
-  kj::Maybe<uint64_t> resolvedId = nullptr;
+  kj::Maybe<uint64_t> resolvedId = CAPNP_LS_NONE;
   for (const auto &[range, id] : rangeMap) {
     if (range.start.line <= line && line <= range.end.line &&
         range.start.character <= character && character <= range.end.character) {
@@ -57,7 +59,31 @@ int main() {
   kj::Vector<kj::String> importPaths;
   importPaths.add(kj::heapString("schemas/common"));
 
+  kj::Vector<kj::String> configuredImportPaths;
+  require(
+      capnp_ls::loadProjectConfigImportPaths(
+          CAPNP_LS_TEST_FIXTURE_DIR,
+          configuredImportPaths),
+      "project config should load from fixture");
+  require(
+      configuredImportPaths.size() == 2,
+      "project config should include two import paths");
+  require(
+      configuredImportPaths[0] == "schemas/common",
+      "project config should preserve import path order");
+
   kj::HashMap<kj::String, kj::Vector<capnp_ls::Diagnostic>> diagnostics;
+
+  auto configuredResult = capnp_ls::LinkedCompiler::compile(
+      fixturePath("schemas/company.capnp"),
+      CAPNP_LS_TEST_FIXTURE_DIR,
+      configuredImportPaths,
+      diagnostics);
+  require(configuredResult.success, "project config import paths should compile");
+  require(
+      diagnostics.size() == 0,
+      "project config import paths should not produce diagnostics");
+  diagnostics.clear();
 
   auto validResult = capnp_ls::LinkedCompiler::compile(
       fixturePath("schemas/company.capnp"),

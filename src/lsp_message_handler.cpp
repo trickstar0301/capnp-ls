@@ -4,7 +4,9 @@
 // See LICENSE file in the project root for full license information.
 
 #include "lsp_message_handler.h"
+#include "kj_compat.h"
 #include "lsp_types.h"
+#include "project_config.h"
 #include <capnp/compat/json.h>
 #include <capnp/message.h>
 #include <iostream>
@@ -25,7 +27,7 @@ LspMessageHandler::LspMessageHandler(
 kj::Promise<void>
 LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
   try {
-    KJ_IF_MAYBE (message, maybeMessage) {
+    CAPNP_LS_IF_SOME (message, maybeMessage) {
       const char *headerEnd = strstr(message->begin(), LSP_HEADER_DELIMITER);
       if (!headerEnd) {
         KJ_LOG(ERROR, "Invalid message format: no header delimiter found");
@@ -68,7 +70,7 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
       auto responseMessageBuilder = kj::heap<capnp::MallocMessageBuilder>();
       kj::Promise<void> promise = kj::READY_NOW;
 
-      KJ_IF_MAYBE (methodEnum, tryParseLspMethod(method)) {
+      CAPNP_LS_IF_SOME (methodEnum, tryParseLspMethod(method)) {
         switch (*methodEnum) {
         case LspMethod::INITIALIZE:
           promise = handleInitialize(params, *responseMessageBuilder);
@@ -101,13 +103,13 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
         KJ_LOG(ERROR, "Unknown method", method.cStr());
       }
 
-      KJ_IF_MAYBE (requestId, maybeRequestId) {
+      CAPNP_LS_IF_SOME (requestId, maybeRequestId) {
         return promise.then(
             [this,
              id = *requestId,
              builder = kj::mv(responseMessageBuilder)]() mutable {
               auto response = builder->getRoot<capnp::JsonValue>().asReader();
-              KJ_IF_MAYBE (responseString, buildResponseString(id, response)) {
+              CAPNP_LS_IF_SOME (responseString, buildResponseString(id, response)) {
                 (void)stdoutWriter.write(*responseString);
               }
               return kj::Promise<void>(kj::READY_NOW);
@@ -124,6 +126,49 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
     KJ_LOG(ERROR, "Error processing message", e.what());
   }
   return kj::Promise<void>(kj::READY_NOW);
+}
+
+void LspMessageHandler::clearCompilationState() {
+  fileSourceInfoMap.clear();
+  nodeLocationMap.clear();
+  diagnosticMap.clear();
+}
+
+bool LspMessageHandler::isProjectConfigPath(kj::StringPtr path) {
+  return path.endsWith(kj::str("/", PROJECT_CONFIG_FILE)) ||
+      path == PROJECT_CONFIG_FILE;
+}
+
+bool LspMessageHandler::reloadProjectConfig() {
+  if (importPathsConfiguredByInitialization) {
+    KJ_LOG(INFO, "Skipping project config reload because initialization options configured import paths");
+    return false;
+  }
+  if (workspacePath.size() == 0) {
+    KJ_LOG(INFO, "Skipping project config reload because workspace path is not set");
+    return false;
+  }
+
+  kj::Vector<kj::String> loadedImportPaths;
+  if (loadProjectConfigImportPaths(workspacePath, loadedImportPaths)) {
+    importPaths.clear();
+    for (auto &path : loadedImportPaths) {
+      importPaths.add(kj::mv(path));
+    }
+    clearCompilationState();
+    KJ_LOG(INFO, "Project config reloaded");
+    return true;
+  }
+
+  if (!projectConfigExists(workspacePath)) {
+    importPaths.clear();
+    clearCompilationState();
+    KJ_LOG(INFO, "Project config removed; import paths cleared");
+    return true;
+  }
+
+  KJ_LOG(ERROR, "Keeping previous project config because reload failed");
+  return false;
 }
 
 kj::Maybe<kj::String> LspMessageHandler::buildResponseString(
@@ -160,7 +205,7 @@ kj::Maybe<kj::String> LspMessageHandler::buildResponseString(
         responseStr);
   } catch (kj::Exception &e) {
     KJ_LOG(ERROR, "Error building response string", e.getDescription());
-    return nullptr;
+    return CAPNP_LS_NONE;
   }
 }
 
@@ -358,7 +403,7 @@ kj::Promise<void> LspMessageHandler::handleDefinition(
         line,
         character);
 
-    KJ_IF_MAYBE (rangeMap, fileSourceInfoMap.find(strippedUri)) {
+    CAPNP_LS_IF_SOME (rangeMap, fileSourceInfoMap.find(strippedUri)) {
       for (const auto &[range, id] : *rangeMap) {
         if (range.start.line <= line && line <= range.end.line &&
             range.start.character <= character &&
@@ -366,7 +411,7 @@ kj::Promise<void> LspMessageHandler::handleDefinition(
 
           KJ_LOG(INFO, "Found range for ", id);
 
-          KJ_IF_MAYBE (location, nodeLocationMap.find(id)) {
+          CAPNP_LS_IF_SOME (location, nodeLocationMap.find(id)) {
             KJ_LOG(INFO, "Found location");
 
             auto locationObj = resultField.getValue().initObject(2);
@@ -441,6 +486,12 @@ kj::Promise<void> LspMessageHandler::handleDidChangeWatchedFiles(
               auto uri = kj::heapString(changeField.getValue().getString());
               KJ_LOG(INFO, "URI", uri.cStr());
 
+              auto path = uriToPath(uri);
+              if (isProjectConfigPath(path)) {
+                reloadProjectConfig();
+                return kj::READY_NOW;
+              }
+
               return compileCapnpFile(uri);
             }
           }
@@ -492,8 +543,9 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
     auto paramsObj = params.getObject();
     for (auto field : paramsObj) {
       if (field.getName() == "workspaceFolders") {
-        auto folders = field.getValue().getArray();
-        if (folders.size() > 0) {
+        if (field.getValue().isArray()) {
+          auto folders = field.getValue().getArray();
+          if (folders.size() > 0) {
           auto firstFolder = folders[0].getObject();
           for (auto folderField : firstFolder) {
             if (folderField.getName() == "uri") {
@@ -502,6 +554,17 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
               KJ_LOG(INFO, "Workspace path set to", workspacePath);
             }
           }
+          }
+        }
+      } else if (field.getName() == "rootUri" && workspacePath.size() == 0) {
+        if (!field.getValue().isNull()) {
+          workspacePath = uriToPath(field.getValue().getString());
+          KJ_LOG(INFO, "Workspace path set from rootUri", workspacePath);
+        }
+      } else if (field.getName() == "rootPath" && workspacePath.size() == 0) {
+        if (!field.getValue().isNull()) {
+          workspacePath = kj::heapString(kj::StringPtr(field.getValue().getString()));
+          KJ_LOG(INFO, "Workspace path set from rootPath", workspacePath);
         }
       } else if (field.getName() == "initializationOptions") {
         auto initOptions = field.getValue().getObject();
@@ -514,6 +577,7 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
                 for (auto path : paths) {
                   importPaths.add(kj::heapString(path.getString()));
                 }
+                importPathsConfiguredByInitialization = true;
                 KJ_LOG(INFO, "Import paths configured");
               }
             }
@@ -521,6 +585,7 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
         }
       }
     }
+    reloadProjectConfig();
   } catch (kj::Exception &e) {
     KJ_LOG(ERROR, "Error processing initialize params", e.getDescription());
   }

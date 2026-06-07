@@ -1,0 +1,6 @@
+{
+  "importPaths": [
+    "schemas/common",
+    "schemas/common2"
+  ]
+}

@@ -40,23 +40,14 @@
 					"default": "v0.0.2",
 					"description": "capnp-ls release tag used for automatic Linux x86_64 and macOS arm64 downloads"
 				},
-				"capnp-ls-client.languageServer.capnpVersion": {
+				"capnp-ls-client.languageServer.capnpChannel": {
 					"type": "string",
 					"enum": [
-						"1.1.0",
-						"1.2.0",
-						"2.0-dev"
+						"v1",
+						"v2"
 					],
-					"default": "1.2.0",
-					"description": "Cap'n Proto compiler version linked into the automatically downloaded language server binary"
-				},
-				"capnp-ls-client.compiler.importPaths": {
-					"type": "array",
-					"items": {
-						"type": "string"
-					},
-					"default": [],
-					"description": "Additional import paths for Cap'n Proto schemas"
+					"default": "v1",
+					"description": "Cap'n Proto compatibility channel for automatically downloaded language server binaries"
 				},
 				"capnp-ls-client.server.extraEnv": {
 					"type": [

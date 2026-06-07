@@ -4,6 +4,7 @@
 // See LICENSE file in the project root for full license information.
 
 #include "symbol_resolver.h"
+#include "kj_compat.h"
 #include "logger.h"
 #include <capnp/message.h>
 #include <capnp/schema-loader.h>
@@ -72,7 +73,7 @@ kj::String extractFilePath(
   KJ_LOG(INFO, "extractFilePath: ", displayName);
   auto colonPos = displayName.findFirst(':');
   kj::String relativeFilePathString;
-  KJ_IF_MAYBE (pos, colonPos) {
+  CAPNP_LS_IF_SOME (pos, colonPos) {
     relativeFilePathString = kj::heapString(displayName.slice(0, *pos));
   } else {
     relativeFilePathString = kj::heapString(displayName);
@@ -113,7 +114,7 @@ kj::String extractFilePath(
       }
     }
 
-    return nullptr;
+    return CAPNP_LS_NONE;
   };
 
   auto workspaceFilePath = workspaceRelativePath.eval(relativeFilePathString);
@@ -128,12 +129,12 @@ kj::String extractFilePath(
   } else {
     // Try import paths
     for (const auto &importPath : importPaths) {
-      KJ_IF_MAYBE (filePath, findInImportPath(importPath)) {
+      CAPNP_LS_IF_SOME (filePath, findInImportPath(importPath)) {
         return kj::mv(*filePath);
       }
     }
 
-    KJ_IF_MAYBE (
+    CAPNP_LS_IF_SOME (
         filePath,
         findInImportPath(kj::str(CAPNP_LS_CAPNP_SOURCE_DIR, "/src"))) {
       return kj::mv(*filePath);
@@ -176,7 +177,7 @@ int SymbolResolver::resolve(
     int depth = 1;
     for (auto node : request.getNodes()) {
       if (node.which() == capnp::schema::Node::Which::FILE) {
-        KJ_IF_MAYBE (sourceInfo, fileSourceInfoMap.find(node.getId())) {
+        CAPNP_LS_IF_SOME (sourceInfo, fileSourceInfoMap.find(node.getId())) {
           kj::String filePath = extractFilePath(
               node.getDisplayName(), importPaths, workspacePath);
           // clear previous data for this file
@@ -214,7 +215,7 @@ int SymbolResolver::resolve(
       kj::String filePath =
           extractFilePath(displayName, importPaths, workspacePath);
 
-      KJ_IF_MAYBE (sourceInfo, sourceInfoMap.find(node.getId())) {
+      CAPNP_LS_IF_SOME (sourceInfo, sourceInfoMap.find(node.getId())) {
         Range range{
             getPositionInFile(filePath, sourceInfo->getStartByte()),
             getPositionInFile(filePath, sourceInfo->getEndByte())};

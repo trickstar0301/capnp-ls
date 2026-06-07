@@ -1,9 +1,5 @@
 {
-    "capnp-ls-client.compiler.importPaths": [
-        "schemas/common",
-        "schemas/common2"
-    ],
-    "capnp-ls-client.languageServer.capnpVersion": "1.2.0",
+    "capnp-ls-client.languageServer.capnpChannel": "v1",
     "capnp-ls-client.languageServer.path": "../build/capnp-ls", // Relative path for development. When using a published extension, specify an absolute path.
     "capnp-ls-client.server.extraEnv": {
         "CPP_LOG": "lsp_server=info"
