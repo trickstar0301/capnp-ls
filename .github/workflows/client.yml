@@ -1,0 +1,38 @@
+name: VS Code Client CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "samples/**"
+      - ".github/workflows/client.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "samples/**"
+      - ".github/workflows/client.yml"
+
+jobs:
+  build:
+    name: Build VS Code client
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: samples
+    steps:
+      - name: Checkout capnp-ls
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Compile
+        run: pnpm compile

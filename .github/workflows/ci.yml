@@ -5,8 +5,12 @@ on:
     branches: [main]
     tags:
       - "*"
+    paths-ignore:
+      - "samples/**"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "samples/**"
 
 jobs:
   build:
