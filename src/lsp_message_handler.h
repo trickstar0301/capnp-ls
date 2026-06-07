@@ -46,6 +46,8 @@ public:
 private:
   kj::Maybe<kj::String>
   buildResponseString(const double id, const capnp::JsonValue::Reader &result);
+  kj::Maybe<kj::String>
+  buildErrorResponseString(const double id, int code, kj::StringPtr message);
   kj::Promise<void> handleShutdown();
   kj::Promise<void> handleDefinition(
       const capnp::JsonValue::Reader &params,

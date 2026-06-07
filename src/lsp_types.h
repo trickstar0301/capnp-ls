@@ -26,6 +26,7 @@ constexpr const char LSP_PARAMS[] = "params";
 constexpr const char LSP_ID[] = "id";
 constexpr const char LSP_JSONRPC[] = "jsonrpc";
 constexpr const char LSP_RESULT[] = "result";
+constexpr const char LSP_ERROR[] = "error";
 
 #define LSP_FOR_EACH_METHOD(MACRO)                                             \
   MACRO(INITIALIZE, "initialize")                                              \
