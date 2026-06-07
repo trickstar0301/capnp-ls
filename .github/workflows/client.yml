@@ -29,7 +29,9 @@ jobs:
           node-version: "24"
 
       - name: Enable pnpm
-        run: corepack enable
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.5.2 --activate
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
