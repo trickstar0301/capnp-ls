@@ -2,12 +2,12 @@
 set -euo pipefail
 
 if [[ $# -ne 2 ]]; then
-  echo "Usage: $0 <capnp-version> <capnp-cxx-source-dir>" >&2
-  echo "Example: $0 1.2.0 ../capnproto/c++" >&2
+  echo "Usage: $0 <capnp-channel> <capnp-cxx-source-dir>" >&2
+  echo "Example: $0 v1 ../capnproto-v1.4.0/c++" >&2
   exit 2
 fi
 
-capnp_version="$1"
+capnp_channel="$1"
 capnp_source_dir="$2"
 
 if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then
@@ -22,14 +22,23 @@ if [[ ! -f "${capnp_source_dir}/src/capnp/compiler/compiler.h" ]]; then
 fi
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-build_dir="${repo_root}/build-release-macos-arm64-capnp-${capnp_version}"
+build_dir="${repo_root}/build-release-macos-arm64-capnp-${capnp_channel}"
 dist_dir="${repo_root}/dist"
-asset_name="capnp-ls-macos-arm64-capnp-${capnp_version}"
+asset_name="capnp-ls-macos-arm64-capnp-${capnp_channel}"
 cxx_standard="17"
 
-if [[ "${capnp_version}" == "2.0-dev" ]]; then
-  cxx_standard="23"
-fi
+case "${capnp_channel}" in
+  v1)
+    cxx_standard="17"
+    ;;
+  v2)
+    cxx_standard="23"
+    ;;
+  *)
+    echo "Unsupported Cap'n Proto channel: ${capnp_channel}. Expected v1 or v2." >&2
+    exit 1
+    ;;
+esac
 
 cmake -B "${build_dir}" \
   -DCMAKE_CXX_STANDARD="${cxx_standard}" \
@@ -43,7 +52,12 @@ ctest --test-dir "${build_dir}" --output-on-failure
 mkdir -p "${dist_dir}"
 cp "${build_dir}/capnp-ls" "${dist_dir}/${asset_name}"
 chmod +x "${dist_dir}/${asset_name}"
+(
+  cd "${dist_dir}"
+  shasum -a 256 "${asset_name}" > "${asset_name}.sha256"
+)
 
 echo "Built ${dist_dir}/${asset_name}"
+echo "Built ${dist_dir}/${asset_name}.sha256"
 echo "Upload manually with:"
-echo "  gh release upload <tag> ${dist_dir}/${asset_name} --clobber"
+echo "  gh release upload <tag> ${dist_dir}/${asset_name} ${dist_dir}/${asset_name}.sha256 --clobber"

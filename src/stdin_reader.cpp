@@ -4,6 +4,7 @@
 // See LICENSE file in the project root for full license information.
 
 #include "stdin_reader.h"
+#include "kj_compat.h"
 #include <cstdlib>
 
 namespace capnp_ls {
@@ -17,7 +18,7 @@ parseNextMessage(const char *buffer, size_t currentPos, size_t processedPos) {
   // Find the end of the header
   const char *headerEnd = strstr(buffer + processedPos, LSP_HEADER_DELIMITER);
   if (!headerEnd) {
-    return {processedPos, nullptr};
+    return {processedPos, CAPNP_LS_NONE};
   }
 
   // Parse Content-Length
@@ -26,7 +27,7 @@ parseNextMessage(const char *buffer, size_t currentPos, size_t processedPos) {
   if (!contentLengthStr) {
     return {
         static_cast<size_t>(headerEnd - buffer + LSP_HEADER_DELIMITER_SIZE),
-        nullptr};
+        CAPNP_LS_NONE};
   }
 
   size_t contentLength = strtoul(
@@ -38,7 +39,7 @@ parseNextMessage(const char *buffer, size_t currentPos, size_t processedPos) {
   size_t totalMessageSize = headerSize + contentLength;
 
   if (currentPos - processedPos < totalMessageSize) {
-    return {processedPos, nullptr};
+    return {processedPos, CAPNP_LS_NONE};
   }
 
   return {
@@ -51,7 +52,7 @@ kj::Promise<void> StdinReader::monitorStdin() {
       .then([this](size_t n) {
         if (n == 0) {
           KJ_LOG(INFO, "EOF detected on stdin");
-          tasks.add(handler.handleMessage(kj::Maybe<kj::String>(nullptr)));
+          tasks.add(handler.handleMessage(kj::Maybe<kj::String>(CAPNP_LS_NONE)));
           return kj::Promise<void>(kj::READY_NOW);
         }
 
@@ -62,7 +63,7 @@ kj::Promise<void> StdinReader::monitorStdin() {
           auto result = parseNextMessage(buffer, currentPos, processedPos);
           processedPos = result.processedSize;
 
-          KJ_IF_MAYBE (content, result.content) {
+          CAPNP_LS_IF_SOME (content, result.content) {
             tasks.add(handler.handleMessage(kj::mv(*content)));
           } else {
             break;

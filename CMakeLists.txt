@@ -26,6 +26,7 @@ add_executable(${exe_name}
     src/stdout_writer.cpp
     src/lsp_message_handler.cpp
     src/lsp_types.cpp
+    src/project_config.cpp
     src/utils.cpp
     src/linked_compiler.cpp
     src/compilation_manager.cpp
@@ -56,8 +57,41 @@ if(CAPNP_LS_BUILD_TESTS)
     enable_testing()
     add_executable(capnp-ls-linked-compiler-test
         tests/linked_compiler_test.cpp
+        src/project_config.cpp
         src/linked_compiler.cpp
         src/symbol_resolver.cpp
+    )
+    add_executable(capnp-ls-initialize-config-test
+        tests/initialize_config_test.cpp
+        src/stdout_writer.cpp
+        src/lsp_message_handler.cpp
+        src/lsp_types.cpp
+        src/project_config.cpp
+        src/utils.cpp
+        src/linked_compiler.cpp
+        src/compilation_manager.cpp
+        src/symbol_resolver.cpp
+    )
+    target_sources(capnp-ls-initialize-config-test PRIVATE
+        "${CAPNP_SOURCE_DIR}/src/capnp/compiler/module-loader.c++"
+    )
+    target_include_directories(capnp-ls-initialize-config-test BEFORE PRIVATE
+        ${CAPNP_SOURCE_DIR}/src
+    )
+    target_link_libraries(capnp-ls-initialize-config-test PRIVATE
+        capnp-json
+        capnpc
+        capnp
+        kj-async
+        kj
+    )
+    target_include_directories(capnp-ls-initialize-config-test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_compile_definitions(capnp-ls-initialize-config-test PRIVATE
+        CAPNP_LS_TESTING
+        CAPNP_LS_TEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/samples/client/testFixture"
+        CAPNP_LS_CAPNP_SOURCE_DIR="${CAPNP_SOURCE_DIR}"
     )
     target_sources(capnp-ls-linked-compiler-test PRIVATE
         "${CAPNP_SOURCE_DIR}/src/capnp/compiler/module-loader.c++"
@@ -67,6 +101,7 @@ if(CAPNP_LS_BUILD_TESTS)
     )
     target_link_libraries(capnp-ls-linked-compiler-test PRIVATE
         capnpc
+        capnp-json
         capnp
         kj-async
         kj
@@ -79,4 +114,5 @@ if(CAPNP_LS_BUILD_TESTS)
         CAPNP_LS_CAPNP_SOURCE_DIR="${CAPNP_SOURCE_DIR}"
     )
     add_test(NAME linked-compiler COMMAND capnp-ls-linked-compiler-test)
+    add_test(NAME initialize-config COMMAND capnp-ls-initialize-config-test)
 endif()

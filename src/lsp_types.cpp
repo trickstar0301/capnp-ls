@@ -4,6 +4,7 @@
 // See LICENSE file in the project root for full license information.
 
 #include "lsp_types.h"
+#include "kj_compat.h"
 
 namespace capnp_ls {
 
@@ -25,6 +26,6 @@ kj::Maybe<LspMethod> tryParseLspMethod(kj::StringPtr name) {
     LSP_FOR_EACH_METHOD(TRY_METHOD)
 #undef TRY_METHOD
     
-    return nullptr;
+    return CAPNP_LS_NONE;
 }
 } // namespace capnp_ls
