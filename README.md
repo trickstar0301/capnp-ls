@@ -53,7 +53,7 @@ one marketplace can host all `trickstar0301` plugins.
 - Supported OS: Linux, macOS arm64
 - CMake
 - Cap'n Proto C++ source tree
-- A C++17-capable compiler for Cap'n Proto `v1.1.0` through `v1.4.0`
+- A C++17-capable compiler for Cap'n Proto `v1`
 - A C++23-capable compiler and standard library for Cap'n Proto `v2`
 
 ### Build Instructions
@@ -76,12 +76,9 @@ The linked compiler backend builds and links Cap'n Proto from the selected sourc
 tree. To support another Cap'n Proto version, build the same `capnp-ls` source
 with `CAPNP_SOURCE_DIR` pointing at that version's C++ source tree.
 
-Supported and tested Cap'n Proto source versions:
+Supported Cap'n Proto source channels:
 
-- `v1.1.0`
-- `v1.2.0`
-- `v1.3.0`
-- `v1.4.0`
+- `v1` (built and tested against `v1.4.0`)
 - `v2`
 
 The executable for the language server is located at `build/capnp-ls`.
@@ -90,9 +87,8 @@ The executable for the language server is located at `build/capnp-ls`.
 
 Release artifacts are versioned by the Cap'n Proto compatibility channel. Each
 artifact is published with a matching `.sha256` file. The `capnp-v1` artifacts
-are built against Cap'n Proto `v1.4.0` and tested with Cap'n Proto `v1.1.0`,
-`v1.2.0`, `v1.3.0`, and `v1.4.0`. The `capnp-v2` artifacts are built against
-the Cap'n Proto `v2` branch.
+are built and tested against Cap'n Proto `v1.4.0`. The `capnp-v2` artifacts are
+built and tested against the Cap'n Proto `v2` branch.
 
 Linux x86_64 artifacts are built by CI:
 
