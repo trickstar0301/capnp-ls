@@ -19,10 +19,6 @@ let client: LanguageClient;
 
 type ReleasePlatform = 'linux-x86_64' | 'macos-arm64';
 
-// Default language server version for downloadable release binaries.
-const DEFAULT_SERVER_VERSION = 'v0.0.2';
-const DEFAULT_CAPNP_CHANNEL = 'v1';
-
 export async function activate(context: ExtensionContext) {
 	if (process.platform === 'win32') {
 		window.showErrorMessage('Windows is not supported by Cap\'n Proto Language Server.');
@@ -63,9 +59,12 @@ export async function activate(context: ExtensionContext) {
 	const config = workspace.getConfiguration('capnp-ls-client');
 	const serverPathRaw = config.get<string>('languageServer.path');
 	const extraEnv = config.get<Record<string, string | number>>('server.extraEnv') || {};
-	// Get server version from configuration or use default
-	const serverVersion = config.get<string>('languageServer.version') || DEFAULT_SERVER_VERSION;
-	const capnpChannel = config.get<string>('languageServer.capnpChannel') || DEFAULT_CAPNP_CHANNEL;
+	const serverVersion = config.get<string>('languageServer.version');
+	const capnpChannel = config.get<string>('languageServer.capnpChannel');
+	if (!serverVersion || !capnpChannel) {
+		window.showErrorMessage('Cap\'n Proto language server version or channel is not configured.');
+		return;
+	}
 
 	// Helper function to resolve environment variables in paths
 	function resolveEnvVars(pathStr: string): string {
