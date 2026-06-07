@@ -3,7 +3,7 @@
 	"description": "A language client of Cap'n Proto Language Server",
 	"author": "Atsushi Tomida",
 	"license": "MIT",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"packageManager": "pnpm@11.5.2",
 	"repository": {
 		"type": "git",
@@ -38,7 +38,7 @@
 				},
 				"capnp-ls-client.languageServer.version": {
 					"type": "string",
-					"default": "v0.0.3",
+					"default": "v0.0.4",
 					"description": "capnp-ls release tag used for automatic Linux x86_64 and macOS arm64 downloads"
 				},
 				"capnp-ls-client.languageServer.capnpChannel": {
