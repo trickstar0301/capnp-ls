@@ -38,7 +38,7 @@
 				},
 				"capnp-ls-client.languageServer.version": {
 					"type": "string",
-					"default": "v0.0.4",
+					"default": "v0.0.5",
 					"description": "capnp-ls release tag used for automatic Linux x86_64 and macOS arm64 downloads"
 				},
 				"capnp-ls-client.languageServer.capnpChannel": {
