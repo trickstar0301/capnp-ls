@@ -67,7 +67,12 @@ private:
   kj::Promise<void> handleFormatting(
       const capnp::JsonValue::Reader &params,
       capnp::MallocMessageBuilder &formattingResponseBuilder);
-  kj::Promise<void> publishDiagnostics(kj::StringPtr fileName);
+  kj::Promise<void> publishDiagnostics(
+      kj::StringPtr fileName,
+      kj::Vector<kj::String> previousDiagnosticFiles);
+  kj::Promise<void> publishDiagnosticsForFile(
+      kj::StringPtr fileName,
+      const kj::Vector<Diagnostic> *diagnostics);
   bool reloadProjectConfig();
   void clearCompilationState();
   bool isProjectConfigPath(kj::StringPtr path);

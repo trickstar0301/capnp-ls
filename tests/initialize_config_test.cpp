@@ -87,10 +87,19 @@ void writeConfig(const std::filesystem::path &workspace, kj::StringPtr content) 
   output.write(content.begin(), content.size());
 }
 
+void writeSchema(const std::filesystem::path &path, kj::StringPtr content) {
+  std::ofstream output(path);
+  output.write(content.begin(), content.size());
+}
+
 void decodeJson(kj::StringPtr json, capnp::MallocMessageBuilder &builder) {
   capnp::JsonCodec codec;
   auto root = builder.initRoot<capnp::JsonValue>();
   codec.decodeRaw(kj::arrayPtr(json.begin(), json.size()), root);
+}
+
+kj::String lspMessage(kj::StringPtr json) {
+  return kj::str("Content-Length: ", json.size(), "\r\n\r\n", json);
 }
 
 kj::StringPtr responseJson(kj::StringPtr message) {
@@ -252,6 +261,72 @@ int main() {
     require(
         handler.testImportPath(0) == "override",
         "initialization option import path should be preserved");
+  }
+
+  {
+    auto workspace = makeTempWorkspace();
+    KJ_DEFER(std::filesystem::remove_all(workspace));
+    auto schemaPath = workspace / "syntax.capnp";
+    auto schemaPathString = schemaPath.string();
+    writeSchema(
+        schemaPath,
+        R"(@0xdba53d6c0e9fe303;
+const defaultName :Text = "Ada";
+struct Person {
+  name @0 :Text = defaultName;
+}
+)");
+
+    auto stream = kj::heap<CapturingOutputStream>();
+    auto &captured = *stream;
+    capnp_ls::StdoutWriter writer(kj::mv(stream));
+    capnp_ls::LspMessageHandler handler(context, writer);
+
+    capnp::MallocMessageBuilder params;
+    auto workspaceString = workspace.string();
+    decodeJson(kj::str(
+        R"({"workspaceFolders":[{"uri":"file://)",
+        workspaceString.c_str(),
+        R"("}]})"),
+        params);
+    capnp::MallocMessageBuilder response;
+    handler
+        .testHandleInitialize(params.getRoot<capnp::JsonValue>().asReader(), response)
+        .wait(io.waitScope);
+
+    handler
+        .handleMessage(lspMessage(kj::str(
+            R"({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file://)",
+            schemaPathString.c_str(),
+            R"("}}})")))
+        .wait(io.waitScope);
+    require(
+        captured.output.find("Constant names must be qualified") !=
+            std::string::npos,
+        "invalid schema should publish a compiler diagnostic");
+
+    captured.output.clear();
+    writeSchema(
+        schemaPath,
+        R"(@0xdba53d6c0e9fe303;
+const defaultName :Text = "Ada";
+struct Person {
+  name @0 :Text = .defaultName;
+}
+)");
+    handler
+        .handleMessage(lspMessage(kj::str(
+            R"({"jsonrpc":"2.0","method":"textDocument/didSave","params":{"textDocument":{"uri":"file://)",
+            schemaPathString.c_str(),
+            R"("}}})")))
+        .wait(io.waitScope);
+    require(
+        captured.output.find(R"("diagnostics":[])") != std::string::npos,
+        "fixed schema should clear previous diagnostics");
+    require(
+        captured.output.find("Constant names must be qualified") ==
+            std::string::npos,
+        "fixed schema should not republish the previous diagnostic");
   }
 
   {

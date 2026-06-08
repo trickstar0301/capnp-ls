@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "kj_compat.h"
 #include <kj/debug.h>
 #include <kj/string.h>
 
@@ -23,7 +24,7 @@ inline kj::Maybe<LogLevel> parseLogLevel(kj::StringPtr level) {
     return LogLevel::INFO;
   }
 
-  return kj::none;
+  return CAPNP_LS_NONE;
 }
 
 inline kj::LogSeverity toKjLogSeverity(LogLevel level) {
