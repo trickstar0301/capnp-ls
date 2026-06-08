@@ -48,6 +48,29 @@ suite('Cap\'n Proto Language Server Test Suite', () => {
         assert.strictEqual(document.languageId, 'capnp');
     });
 
+    test('Open Syntax Fixture', async () => {
+        const workspaceFolder = vscode.workspace.workspaceFolders![0];
+        const uri = vscode.Uri.file(path.join(workspaceFolder.uri.fsPath, 'schemas/syntax.capnp'));
+        const syntaxDocument = await vscode.workspace.openTextDocument(uri);
+        await vscode.window.showTextDocument(syntaxDocument);
+
+        assert.strictEqual(syntaxDocument.languageId, 'capnp');
+        assert.ok(syntaxDocument.getText().includes('$Cxx.namespace'));
+    });
+
+    test('Line Comment Configuration', async () => {
+        const document = await vscode.workspace.openTextDocument({
+            language: 'capnp',
+            content: '@0xdba53d6c0e9fe301;\nstruct CommentTarget {}\n'
+        });
+        const editor = await vscode.window.showTextDocument(document);
+        editor.selection = new vscode.Selection(1, 0, 1, 0);
+
+        await vscode.commands.executeCommand('editor.action.commentLine');
+
+        assert.strictEqual(document.lineAt(1).text, '# struct CommentTarget {}');
+    });
+
     test('Definition Provider', async () => {
         console.log('Starting Definition Provider test');
 

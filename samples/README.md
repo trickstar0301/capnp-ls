@@ -6,6 +6,8 @@ A VS Code extension that provides language support for Cap'n Proto schema files.
 
 - Go to definition
 - Diagnostics (error reporting)
+- Syntax highlighting
+- Line comments with `#`
 
 ## Requirements
 
