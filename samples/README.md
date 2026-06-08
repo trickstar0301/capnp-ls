@@ -23,17 +23,19 @@ This extension contributes the following settings:
 * `capnp-ls-client.languageServer.capnpChannel`: Cap'n Proto compatibility channel for the automatically downloaded language server binary. Supported values are `v1` and `v2`.
   * Changing the server path, release version, or Cap'n Proto channel prompts you to reload VS Code so the new server binary is used.
 * `capnp-ls-client.server.extraEnv`: Extra environment variables that will be passed to the capnp-ls executable.
-  * `CPP_LOG`: Log level for the Cap'n Proto language server.
-    * Example: `CPP_LOG=lsp_server=info`: Set log level to info.
+  * `CPP_LOG`: Process-wide fallback log level for the Cap'n Proto language server. Prefer `.capnp-ls.json` for workspace-specific log level changes.
+    * Example: `CPP_LOG=lsp_server=info`: Set the fallback log level to info.
     * Default: `CPP_LOG=lsp_server=warning`
 
 #### Example configuration:
 
 Project-specific import paths are read by the language server from
-`.capnp-ls.json` in your workspace root:
+`.capnp-ls.json` in your workspace root. The same file can set the workspace
+log level to `error`, `warning`, or `info`:
 
 ```json
 {
+    "logLevel": "warning",
     "importPaths": [
         "path/to/schema/imports"
     ]
@@ -45,10 +47,7 @@ To customize client settings, configure them in VS Code User Settings:
 ```json
 {
     "capnp-ls-client.languageServer.path": "/absolute/path/to/capnp-ls",
-    "capnp-ls-client.languageServer.capnpChannel": "v1",
-    "capnp-ls-client.server.extraEnv": {
-        "CPP_LOG": "lsp_server=warning"
-    }
+    "capnp-ls-client.languageServer.capnpChannel": "v1"
 }
 ```
 ## Release Artifact Availability

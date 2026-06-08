@@ -148,30 +148,42 @@ bool LspMessageHandler::isProjectConfigPath(kj::StringPtr path) {
 }
 
 bool LspMessageHandler::reloadProjectConfig() {
-  if (importPathsConfiguredByInitialization) {
-    KJ_LOG(INFO, "Skipping project config reload because initialization options configured import paths");
-    return false;
-  }
   if (workspacePath.size() == 0) {
     KJ_LOG(INFO, "Skipping project config reload because workspace path is not set");
     return false;
   }
 
-  kj::Vector<kj::String> loadedImportPaths;
-  if (loadProjectConfigImportPaths(workspacePath, loadedImportPaths)) {
-    importPaths.clear();
-    for (auto &path : loadedImportPaths) {
-      importPaths.add(kj::mv(path));
+  ProjectConfig loadedConfig;
+  if (loadProjectConfig(workspacePath, loadedConfig)) {
+    KJ_IF_SOME(logLevel, loadedConfig.logLevel) {
+      currentLogLevel = logLevel;
+    } else {
+      currentLogLevel = defaultLogLevel;
     }
+    applyLogLevel(currentLogLevel);
+
+    if (!importPathsConfiguredByInitialization) {
+      importPaths.clear();
+      for (auto &path : loadedConfig.importPaths) {
+        importPaths.add(kj::mv(path));
+      }
+    } else {
+      KJ_LOG(INFO, "Skipping project config import paths because initialization options configured import paths");
+    }
+
     clearCompilationState();
     KJ_LOG(INFO, "Project config reloaded");
     return true;
   }
 
   if (!projectConfigExists(workspacePath)) {
-    importPaths.clear();
+    currentLogLevel = defaultLogLevel;
+    applyLogLevel(currentLogLevel);
+    if (!importPathsConfiguredByInitialization) {
+      importPaths.clear();
+    }
     clearCompilationState();
-    KJ_LOG(INFO, "Project config removed; import paths cleared");
+    KJ_LOG(INFO, "Project config removed; defaults restored");
     return true;
   }
 

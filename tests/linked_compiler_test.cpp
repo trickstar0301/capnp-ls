@@ -5,11 +5,14 @@
 
 #include "linked_compiler.h"
 #include "kj_compat.h"
+#include "log_level.h"
 #include "project_config.h"
 #include "symbol_resolver.h"
 #include <capnp/schema.capnp.h>
+#include <cstdlib>
 #include <kj/debug.h>
 #include <kj/string.h>
+#include <string>
 
 namespace {
 
@@ -56,6 +59,27 @@ void requireDiagnosticContaining(
 } // namespace
 
 int main() {
+  const char *previousLogEnv = std::getenv("CPP_LOG");
+  bool hadPreviousLogEnv = previousLogEnv != nullptr;
+  std::string previousLogEnvValue = hadPreviousLogEnv ? previousLogEnv : "";
+  unsetenv("CPP_LOG");
+  require(
+      capnp_ls::logLevelFromEnvironment() == capnp_ls::LogLevel::WARNING,
+      "server log level should default to warning");
+  setenv("CPP_LOG", "lsp_server=info", 1);
+  require(
+      capnp_ls::logLevelFromEnvironment() == capnp_ls::LogLevel::INFO,
+      "server log level should use explicit info from CPP_LOG");
+  setenv("CPP_LOG", "lsp_server=debug", 1);
+  require(
+      capnp_ls::logLevelFromEnvironment() == capnp_ls::LogLevel::WARNING,
+      "unknown CPP_LOG level should fall back to warning");
+  if (hadPreviousLogEnv) {
+    setenv("CPP_LOG", previousLogEnvValue.c_str(), 1);
+  } else {
+    unsetenv("CPP_LOG");
+  }
+
   kj::Vector<kj::String> importPaths;
   importPaths.add(kj::heapString("schemas/common"));
 
@@ -71,6 +95,30 @@ int main() {
   require(
       configuredImportPaths[0] == "schemas/common",
       "project config should preserve import path order");
+
+  capnp_ls::ProjectConfig parsedConfig;
+  capnp_ls::parseProjectConfig(
+      R"({"importPaths":["schemas/common"],"logLevel":"info"})",
+      parsedConfig);
+  require(
+      parsedConfig.importPaths.size() == 1,
+      "project config should parse import paths");
+  require(
+      KJ_ASSERT_NONNULL(parsedConfig.logLevel) == capnp_ls::LogLevel::INFO,
+      "project config should parse log level");
+
+  bool invalidLogLevelFailed = false;
+  try {
+    capnp_ls::ProjectConfig invalidConfig;
+    capnp_ls::parseProjectConfig(
+        R"({"importPaths":["schemas/common"],"logLevel":"debug"})",
+        invalidConfig);
+  } catch (kj::Exception &) {
+    invalidLogLevelFailed = true;
+  }
+  require(
+      invalidLogLevelFailed,
+      "project config should reject unknown log levels");
 
   kj::HashMap<kj::String, kj::Vector<capnp_ls::Diagnostic>> diagnostics;
 

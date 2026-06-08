@@ -169,7 +169,7 @@ int main() {
   {
     auto workspace = makeTempWorkspace();
     KJ_DEFER(std::filesystem::remove_all(workspace));
-    writeConfig(workspace, R"({"importPaths":["one"]})");
+    writeConfig(workspace, R"({"importPaths":["one"],"logLevel":"info"})");
 
     capnp_ls::StdoutWriter writer(kj::heap<NullOutputStream>());
     capnp_ls::LspMessageHandler handler(context, writer);
@@ -187,24 +187,47 @@ int main() {
     require(
         handler.testImportPathCount() == 1 && handler.testImportPath(0) == "one",
         "initial import path should load from project config");
+    require(
+        handler.testLogLevel() == capnp_ls::LogLevel::INFO,
+        "initial log level should load from project config");
 
-    writeConfig(workspace, R"({"importPaths":["two","three"]})");
+    writeConfig(workspace, R"({"importPaths":["two","three"],"logLevel":"warning"})");
     require(handler.testReloadProjectConfig(), "valid config change should reload");
     require(
         handler.testImportPathCount() == 2 && handler.testImportPath(0) == "two",
         "changed project config should replace import paths");
+    require(
+        handler.testLogLevel() == capnp_ls::LogLevel::WARNING,
+        "changed project config should replace log level");
 
     writeConfig(workspace, R"({"importPaths":[)");
     require(!handler.testReloadProjectConfig(), "invalid config should not reload");
     require(
         handler.testImportPathCount() == 2 && handler.testImportPath(0) == "two",
         "invalid project config should keep previous import paths");
+    require(
+        handler.testLogLevel() == capnp_ls::LogLevel::WARNING,
+        "invalid project config should keep previous log level");
+
+    writeConfig(workspace, R"({"importPaths":["four"],"logLevel":"debug"})");
+    require(
+        !handler.testReloadProjectConfig(),
+        "unknown project config log level should not reload");
+    require(
+        handler.testImportPathCount() == 2 && handler.testImportPath(0) == "two",
+        "unknown project config log level should keep previous import paths");
+    require(
+        handler.testLogLevel() == capnp_ls::LogLevel::WARNING,
+        "unknown project config log level should keep previous log level");
 
     std::filesystem::remove(workspace / ".capnp-ls.json");
     require(handler.testReloadProjectConfig(), "deleted config should reload");
     require(
         handler.testImportPathCount() == 0,
         "deleted project config should clear import paths");
+    require(
+        handler.testLogLevel() == capnp_ls::LogLevel::WARNING,
+        "deleted project config should restore default log level");
   }
 
   {

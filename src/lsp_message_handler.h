@@ -6,6 +6,7 @@
 #pragma once
 
 #include "compilation_manager.h"
+#include "log_level.h"
 #include "lsp_types.h"
 #include "server_context.h"
 #include "stdout_writer.h"
@@ -41,6 +42,9 @@ public:
   bool testReloadProjectConfig() {
     return reloadProjectConfig();
   }
+  LogLevel testLogLevel() const {
+    return currentLogLevel;
+  }
 #endif
 
 private:
@@ -74,6 +78,8 @@ private:
   kj::String workspacePath;
   kj::Vector<kj::String> importPaths;
   bool importPathsConfiguredByInitialization = false;
+  LogLevel defaultLogLevel = logLevelFromEnvironment();
+  LogLevel currentLogLevel = defaultLogLevel;
   ServerContext &context;
   kj::Own<CompilationManager> compilationManager;
   StdoutWriter &stdoutWriter;
