@@ -278,13 +278,7 @@ export async function activate(context: ExtensionContext) {
 			]
 		},
 		outputChannel: outputChannel,
-		workspaceFolder: workspaceFolder,
-		middleware: {
-			provideDefinition: (document, position, token, next) => {
-				log(`Definition requested at position: ${position.line}:${position.character}`);
-				return next(document, position, token);
-			}
-		}
+		workspaceFolder: workspaceFolder
 	};
 
 	// Create and start the client
