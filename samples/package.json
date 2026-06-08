@@ -3,7 +3,7 @@
 	"description": "A language client of Cap'n Proto Language Server",
 	"author": "Atsushi Tomida",
 	"license": "MIT",
-	"version": "0.3.3",
+	"version": "0.3.4",
 	"packageManager": "pnpm@11.5.2",
 	"repository": {
 		"type": "git",
