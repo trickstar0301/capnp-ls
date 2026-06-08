@@ -140,7 +140,14 @@ export async function activate(context: ExtensionContext) {
 				log(`Found language server at: ${extensionVersionedBinaryPath}`);
 				return extensionVersionedBinaryPath;
 			} catch (e) {
-				throw new Error(`Language server is not executable: ${extensionVersionedBinaryPath}`);
+				try {
+					await fs.promises.chmod(extensionVersionedBinaryPath, 0o755);
+					fs.accessSync(extensionVersionedBinaryPath, fs.constants.X_OK);
+					log(`Fixed language server executable permission at: ${extensionVersionedBinaryPath}`);
+					return extensionVersionedBinaryPath;
+				} catch {
+					throw new Error(`Language server is not executable: ${extensionVersionedBinaryPath}`);
+				}
 			}
 		}
 
