@@ -24,26 +24,41 @@ kj::String projectConfigPath(kj::StringPtr workspacePath) {
 void parseProjectConfigImportPaths(
     kj::StringPtr content,
     kj::Vector<kj::String> &importPaths) {
+  ProjectConfig config;
+  parseProjectConfig(content, config);
+  for (auto &path : config.importPaths) {
+    importPaths.add(kj::mv(path));
+  }
+}
+
+void parseProjectConfig(kj::StringPtr content, ProjectConfig &config) {
   capnp::JsonCodec codec;
   capnp::MallocMessageBuilder messageBuilder;
   auto root = messageBuilder.initRoot<capnp::JsonValue>();
   kj::ArrayPtr<const char> jsonContent(content.begin(), content.size());
   codec.decodeRaw(jsonContent, root);
 
-  auto config = root.getObject();
-  for (auto field : config) {
+  auto configObject = root.getObject();
+  for (auto field : configObject) {
     if (field.getName().asString() == kj::StringPtr("importPaths")) {
       auto paths = field.getValue().getArray();
       for (auto path : paths) {
-        importPaths.add(kj::heapString(kj::StringPtr(path.getString())));
+        config.importPaths.add(kj::heapString(kj::StringPtr(path.getString())));
+      }
+    } else if (field.getName().asString() == kj::StringPtr("logLevel")) {
+      KJ_REQUIRE(field.getValue().isString(), "logLevel must be a string");
+      CAPNP_LS_IF_SOME (level, parseLogLevel(field.getValue().getString())) {
+        config.logLevel = *level;
+      } else {
+        KJ_FAIL_REQUIRE(
+            "logLevel must be one of: error, warning, info",
+            field.getValue().getString());
       }
     }
   }
 }
 
-bool loadProjectConfigImportPaths(
-    kj::StringPtr workspacePath,
-    kj::Vector<kj::String> &importPaths) {
+bool loadProjectConfig(kj::StringPtr workspacePath, ProjectConfig &config) {
   auto configPath = projectConfigPath(workspacePath);
   std::ifstream input(configPath.cStr());
   if (!input.good()) {
@@ -56,13 +71,27 @@ bool loadProjectConfigImportPaths(
       std::istreambuf_iterator<char>());
 
   try {
-    parseProjectConfigImportPaths(kj::StringPtr(content.data(), content.size()), importPaths);
+    parseProjectConfig(kj::StringPtr(content.data(), content.size()), config);
   } catch (kj::Exception &e) {
     KJ_LOG(ERROR, "Failed to parse project config", configPath, e.getDescription());
     return false;
   }
 
   KJ_LOG(INFO, "Loaded project config", configPath);
+  return true;
+}
+
+bool loadProjectConfigImportPaths(
+    kj::StringPtr workspacePath,
+    kj::Vector<kj::String> &importPaths) {
+  ProjectConfig config;
+  if (!loadProjectConfig(workspacePath, config)) {
+    return false;
+  }
+
+  for (auto &path : config.importPaths) {
+    importPaths.add(kj::mv(path));
+  }
   return true;
 }
 

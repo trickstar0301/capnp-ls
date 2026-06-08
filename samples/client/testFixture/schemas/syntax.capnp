@@ -16,7 +16,7 @@ enum Role {
 
 struct Person {
   id @0: UInt64;
-  name @1: Text = defaultName;
+  name @1: Text = .defaultName;
   role @2: Role;
   tags @3: List(Text);
   oldName @4: Text $deprecated("Use name instead");

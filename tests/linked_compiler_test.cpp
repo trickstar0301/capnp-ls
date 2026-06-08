@@ -5,6 +5,7 @@
 
 #include "linked_compiler.h"
 #include "kj_compat.h"
+#include "log_level.h"
 #include "project_config.h"
 #include "symbol_resolver.h"
 #include <capnp/schema.capnp.h>
@@ -71,6 +72,30 @@ int main() {
   require(
       configuredImportPaths[0] == "schemas/common",
       "project config should preserve import path order");
+
+  capnp_ls::ProjectConfig parsedConfig;
+  capnp_ls::parseProjectConfig(
+      R"({"importPaths":["schemas/common"],"logLevel":"info"})",
+      parsedConfig);
+  require(
+      parsedConfig.importPaths.size() == 1,
+      "project config should parse import paths");
+  require(
+      KJ_ASSERT_NONNULL(parsedConfig.logLevel) == capnp_ls::LogLevel::INFO,
+      "project config should parse log level");
+
+  bool invalidLogLevelFailed = false;
+  try {
+    capnp_ls::ProjectConfig invalidConfig;
+    capnp_ls::parseProjectConfig(
+        R"({"importPaths":["schemas/common"],"logLevel":"debug"})",
+        invalidConfig);
+  } catch (kj::Exception &) {
+    invalidLogLevelFailed = true;
+  }
+  require(
+      invalidLogLevelFailed,
+      "project config should reject unknown log levels");
 
   kj::HashMap<kj::String, kj::Vector<capnp_ls::Diagnostic>> diagnostics;
 

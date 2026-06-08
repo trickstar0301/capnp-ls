@@ -83,6 +83,22 @@ Supported Cap'n Proto source channels:
 
 The executable for the language server is located at `build/capnp-ls`.
 
+## Workspace Configuration
+
+The language server reads `.capnp-ls.json` from the workspace root. Use
+`importPaths` for project-specific schema import directories and `logLevel` to
+set workspace logging. Supported log levels are `error`, `warning`, and `info`;
+the default is `warning`.
+
+```json
+{
+  "logLevel": "warning",
+  "importPaths": [
+    "path/to/schema/imports"
+  ]
+}
+```
+
 ## Release Artifacts
 
 Release artifacts are versioned by the Cap'n Proto compatibility channel. Each

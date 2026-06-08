@@ -87,10 +87,19 @@ void writeConfig(const std::filesystem::path &workspace, kj::StringPtr content) 
   output.write(content.begin(), content.size());
 }
 
+void writeSchema(const std::filesystem::path &path, kj::StringPtr content) {
+  std::ofstream output(path);
+  output.write(content.begin(), content.size());
+}
+
 void decodeJson(kj::StringPtr json, capnp::MallocMessageBuilder &builder) {
   capnp::JsonCodec codec;
   auto root = builder.initRoot<capnp::JsonValue>();
   codec.decodeRaw(kj::arrayPtr(json.begin(), json.size()), root);
+}
+
+kj::String lspMessage(kj::StringPtr json) {
+  return kj::str("Content-Length: ", json.size(), "\r\n\r\n", json);
 }
 
 kj::StringPtr responseJson(kj::StringPtr message) {
@@ -155,6 +164,9 @@ int main() {
         handler.testWorkspacePath() == CAPNP_LS_TEST_FIXTURE_DIR,
         "rootUri should be used when workspaceFolders is null");
     require(
+        handler.testLogLevel() == capnp_ls::LogLevel::WARNING,
+        "server log level should default to warning");
+    require(
         handler.testImportPathCount() == 2,
         "rootUri initialize should load .capnp-ls.json import paths");
 
@@ -169,7 +181,7 @@ int main() {
   {
     auto workspace = makeTempWorkspace();
     KJ_DEFER(std::filesystem::remove_all(workspace));
-    writeConfig(workspace, R"({"importPaths":["one"]})");
+    writeConfig(workspace, R"({"importPaths":["one"],"logLevel":"info"})");
 
     capnp_ls::StdoutWriter writer(kj::heap<NullOutputStream>());
     capnp_ls::LspMessageHandler handler(context, writer);
@@ -187,24 +199,53 @@ int main() {
     require(
         handler.testImportPathCount() == 1 && handler.testImportPath(0) == "one",
         "initial import path should load from project config");
+    require(
+        handler.testLogLevel() == capnp_ls::LogLevel::INFO,
+        "initial log level should load from project config");
 
-    writeConfig(workspace, R"({"importPaths":["two","three"]})");
-    require(handler.testReloadProjectConfig(), "valid config change should reload");
+    writeConfig(workspace, R"({"importPaths":["two","three"],"logLevel":"warning"})");
+    auto configPathString = (workspace / ".capnp-ls.json").string();
+    handler
+        .handleMessage(lspMessage(kj::str(
+            R"({"jsonrpc":"2.0","method":"workspace/didChangeWatchedFiles","params":{"changes":[{"uri":"file://)",
+            configPathString.c_str(),
+            R"(","type":2}]}})")))
+        .wait(io.waitScope);
     require(
         handler.testImportPathCount() == 2 && handler.testImportPath(0) == "two",
-        "changed project config should replace import paths");
+        "watched file change should reload project config import paths");
+    require(
+        handler.testLogLevel() == capnp_ls::LogLevel::WARNING,
+        "watched file change should reload project config log level");
 
     writeConfig(workspace, R"({"importPaths":[)");
     require(!handler.testReloadProjectConfig(), "invalid config should not reload");
     require(
         handler.testImportPathCount() == 2 && handler.testImportPath(0) == "two",
         "invalid project config should keep previous import paths");
+    require(
+        handler.testLogLevel() == capnp_ls::LogLevel::WARNING,
+        "invalid project config should keep previous log level");
+
+    writeConfig(workspace, R"({"importPaths":["four"],"logLevel":"debug"})");
+    require(
+        !handler.testReloadProjectConfig(),
+        "unknown project config log level should not reload");
+    require(
+        handler.testImportPathCount() == 2 && handler.testImportPath(0) == "two",
+        "unknown project config log level should keep previous import paths");
+    require(
+        handler.testLogLevel() == capnp_ls::LogLevel::WARNING,
+        "unknown project config log level should keep previous log level");
 
     std::filesystem::remove(workspace / ".capnp-ls.json");
     require(handler.testReloadProjectConfig(), "deleted config should reload");
     require(
         handler.testImportPathCount() == 0,
         "deleted project config should clear import paths");
+    require(
+        handler.testLogLevel() == capnp_ls::LogLevel::WARNING,
+        "deleted project config should restore default log level");
   }
 
   {
@@ -226,6 +267,72 @@ int main() {
     require(
         handler.testImportPath(0) == "override",
         "initialization option import path should be preserved");
+  }
+
+  {
+    auto workspace = makeTempWorkspace();
+    KJ_DEFER(std::filesystem::remove_all(workspace));
+    auto schemaPath = workspace / "syntax.capnp";
+    auto schemaPathString = schemaPath.string();
+    writeSchema(
+        schemaPath,
+        R"(@0xdba53d6c0e9fe303;
+const defaultName :Text = "Ada";
+struct Person {
+  name @0 :Text = defaultName;
+}
+)");
+
+    auto stream = kj::heap<CapturingOutputStream>();
+    auto &captured = *stream;
+    capnp_ls::StdoutWriter writer(kj::mv(stream));
+    capnp_ls::LspMessageHandler handler(context, writer);
+
+    capnp::MallocMessageBuilder params;
+    auto workspaceString = workspace.string();
+    decodeJson(kj::str(
+        R"({"workspaceFolders":[{"uri":"file://)",
+        workspaceString.c_str(),
+        R"("}]})"),
+        params);
+    capnp::MallocMessageBuilder response;
+    handler
+        .testHandleInitialize(params.getRoot<capnp::JsonValue>().asReader(), response)
+        .wait(io.waitScope);
+
+    handler
+        .handleMessage(lspMessage(kj::str(
+            R"({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file://)",
+            schemaPathString.c_str(),
+            R"("}}})")))
+        .wait(io.waitScope);
+    require(
+        captured.output.find("Constant names must be qualified") !=
+            std::string::npos,
+        "invalid schema should publish a compiler diagnostic");
+
+    captured.output.clear();
+    writeSchema(
+        schemaPath,
+        R"(@0xdba53d6c0e9fe303;
+const defaultName :Text = "Ada";
+struct Person {
+  name @0 :Text = .defaultName;
+}
+)");
+    handler
+        .handleMessage(lspMessage(kj::str(
+            R"({"jsonrpc":"2.0","method":"textDocument/didSave","params":{"textDocument":{"uri":"file://)",
+            schemaPathString.c_str(),
+            R"("}}})")))
+        .wait(io.waitScope);
+    require(
+        captured.output.find(R"("diagnostics":[])") != std::string::npos,
+        "fixed schema should clear previous diagnostics");
+    require(
+        captured.output.find("Constant names must be qualified") ==
+            std::string::npos,
+        "fixed schema should not republish the previous diagnostic");
   }
 
   {

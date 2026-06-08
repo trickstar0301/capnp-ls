@@ -26,7 +26,6 @@ export function createServerEnvironment(
 ): NodeJS.ProcessEnv {
 	return {
 		...baseEnv,
-		CPP_LOG: 'lsp_server=warning',
 		...Object.fromEntries(
 			Object.entries(extraEnv).map(([key, value]) => [key, String(value)])
 		)

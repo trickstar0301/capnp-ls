@@ -5,58 +5,23 @@
 
 #pragma once
 
+#include "log_level.h"
 #include "stdout_writer.h"
 #include <capnp/compat/json.h>
 #include <capnp/message.h>
-#include <cstdlib>
 #include <kj/debug.h>
 #include <kj/exception.h>
 
 namespace capnp_ls {
 
-enum class LogLevel { ERROR, WARNING, INFO };
-
 class LspLogger : public kj::ExceptionCallback {
 public:
   LspLogger(StdoutWriter &writer) : writer(writer) {
-    // Get log level from environment variable
-    const char *logEnv = std::getenv("CPP_LOG");
-    LogLevel level = LogLevel::WARNING; // Default log level
-
-    if (logEnv != nullptr) {
-      kj::StringPtr logStr(logEnv);
-
-      // Parse environment variable format: lsp_server=level
-      if (logStr.startsWith("lsp_server=")) {
-        auto levelStr = logStr.slice(11); // Skip "lsp_server="
-
-        if (levelStr == "error") {
-          level = LogLevel::ERROR;
-        } else if (levelStr == "warning") {
-          level = LogLevel::WARNING;
-        } else if (levelStr == "info") {
-          level = LogLevel::INFO;
-        }
-      }
-    }
-
-    // Set KJ log level
-    kj::LogSeverity kjLogLevel;
-    switch (level) {
-    case LogLevel::ERROR:
-      kjLogLevel = kj::LogSeverity::ERROR;
-      break;
-    case LogLevel::WARNING:
-      kjLogLevel = kj::LogSeverity::WARNING;
-      break;
-    case LogLevel::INFO:
-      kjLogLevel = kj::LogSeverity::INFO;
-      break;
-    }
-    kj::_::Debug::setLogLevel(kjLogLevel);
+    auto level = LogLevel::WARNING;
+    applyLogLevel(level);
 
     // Log the current log level
-    KJ_LOG(INFO, "Log level set to", kjLogLevel);
+    KJ_LOG(INFO, "Log level set to", toKjLogSeverity(level));
   }
 
   void logMessage(

@@ -5,12 +5,22 @@
 
 #pragma once
 
+#include "log_level.h"
 #include <kj/string.h>
 #include <kj/vector.h>
 
 namespace capnp_ls {
 
 constexpr const char *PROJECT_CONFIG_FILE = ".capnp-ls.json";
+
+struct ProjectConfig {
+  kj::Vector<kj::String> importPaths;
+  kj::Maybe<LogLevel> logLevel;
+};
+
+void parseProjectConfig(kj::StringPtr content, ProjectConfig &config);
+
+bool loadProjectConfig(kj::StringPtr workspacePath, ProjectConfig &config);
 
 void parseProjectConfigImportPaths(
     kj::StringPtr content,

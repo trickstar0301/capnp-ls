@@ -6,6 +6,7 @@
 #pragma once
 
 #include "compilation_manager.h"
+#include "log_level.h"
 #include "lsp_types.h"
 #include "server_context.h"
 #include "stdout_writer.h"
@@ -41,6 +42,9 @@ public:
   bool testReloadProjectConfig() {
     return reloadProjectConfig();
   }
+  LogLevel testLogLevel() const {
+    return currentLogLevel;
+  }
 #endif
 
 private:
@@ -63,7 +67,12 @@ private:
   kj::Promise<void> handleFormatting(
       const capnp::JsonValue::Reader &params,
       capnp::MallocMessageBuilder &formattingResponseBuilder);
-  kj::Promise<void> publishDiagnostics(kj::StringPtr fileName);
+  kj::Promise<void> publishDiagnostics(
+      kj::StringPtr fileName,
+      kj::Vector<kj::String> previousDiagnosticFiles);
+  kj::Promise<void> publishDiagnosticsForFile(
+      kj::StringPtr fileName,
+      const kj::Vector<Diagnostic> *diagnostics);
   bool reloadProjectConfig();
   void clearCompilationState();
   bool isProjectConfigPath(kj::StringPtr path);
@@ -74,6 +83,8 @@ private:
   kj::String workspacePath;
   kj::Vector<kj::String> importPaths;
   bool importPathsConfiguredByInitialization = false;
+  LogLevel defaultLogLevel = LogLevel::WARNING;
+  LogLevel currentLogLevel = defaultLogLevel;
   ServerContext &context;
   kj::Own<CompilationManager> compilationManager;
   StdoutWriter &stdoutWriter;

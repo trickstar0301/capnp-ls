@@ -87,13 +87,15 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
         case LspMethod::DID_SAVE:
           promise = handleDidSave(params);
           break;
+        case LspMethod::DID_CHANGE_WATCHED_FILES:
+          promise = handleDidChangeWatchedFiles(params);
+          break;
         case LspMethod::FORMATTING:
           promise = handleFormatting(params, *responseMessageBuilder);
           break;
         case LspMethod::INITIALIZED:
         case LspMethod::SET_TRACE:
         case LspMethod::CANCEL_REQUEST:
-        case LspMethod::DID_CHANGE_WATCHED_FILES:
         case LspMethod::DID_CHANGE:
         case LspMethod::DID_CLOSE:
           // KJ_LOG(INFO, "Ignoring method", method.cStr());
@@ -148,30 +150,42 @@ bool LspMessageHandler::isProjectConfigPath(kj::StringPtr path) {
 }
 
 bool LspMessageHandler::reloadProjectConfig() {
-  if (importPathsConfiguredByInitialization) {
-    KJ_LOG(INFO, "Skipping project config reload because initialization options configured import paths");
-    return false;
-  }
   if (workspacePath.size() == 0) {
     KJ_LOG(INFO, "Skipping project config reload because workspace path is not set");
     return false;
   }
 
-  kj::Vector<kj::String> loadedImportPaths;
-  if (loadProjectConfigImportPaths(workspacePath, loadedImportPaths)) {
-    importPaths.clear();
-    for (auto &path : loadedImportPaths) {
-      importPaths.add(kj::mv(path));
+  ProjectConfig loadedConfig;
+  if (loadProjectConfig(workspacePath, loadedConfig)) {
+    CAPNP_LS_IF_SOME (logLevel, loadedConfig.logLevel) {
+      currentLogLevel = *logLevel;
+    } else {
+      currentLogLevel = defaultLogLevel;
     }
+    applyLogLevel(currentLogLevel);
+
+    if (!importPathsConfiguredByInitialization) {
+      importPaths.clear();
+      for (auto &path : loadedConfig.importPaths) {
+        importPaths.add(kj::mv(path));
+      }
+    } else {
+      KJ_LOG(INFO, "Skipping project config import paths because initialization options configured import paths");
+    }
+
     clearCompilationState();
     KJ_LOG(INFO, "Project config reloaded");
     return true;
   }
 
   if (!projectConfigExists(workspacePath)) {
-    importPaths.clear();
+    currentLogLevel = defaultLogLevel;
+    applyLogLevel(currentLogLevel);
+    if (!importPathsConfiguredByInitialization) {
+      importPaths.clear();
+    }
     clearCompilationState();
-    KJ_LOG(INFO, "Project config removed; import paths cleared");
+    KJ_LOG(INFO, "Project config removed; defaults restored");
     return true;
   }
 
@@ -259,6 +273,11 @@ kj::Maybe<kj::String> LspMessageHandler::buildErrorResponseString(
 kj::Promise<void> LspMessageHandler::compileCapnpFile(kj::StringPtr uri) {
   auto strippedUri = uriToPath(uri);
   if (strippedUri.endsWith(".capnp")) {
+    kj::Vector<kj::String> previousDiagnosticFiles;
+    for (const auto &[diagnosticUri, _] : diagnosticMap) {
+      previousDiagnosticFiles.add(kj::heapString(diagnosticUri));
+    }
+
     return compilationManager
         ->compile(CompilationManager::CompileParams(
             importPaths,
@@ -267,17 +286,52 @@ kj::Promise<void> LspMessageHandler::compileCapnpFile(kj::StringPtr uri) {
             fileSourceInfoMap,
             nodeLocationMap,
             diagnosticMap))
-        .then([this, strippedUri = kj::mv(strippedUri)]() {
-          return publishDiagnostics(strippedUri);
+        .then([this,
+               strippedUri = kj::mv(strippedUri),
+               previousDiagnosticFiles = kj::mv(previousDiagnosticFiles)]() mutable {
+          return publishDiagnostics(
+              strippedUri,
+              kj::mv(previousDiagnosticFiles));
         });
   }
   return kj::READY_NOW;
 }
 
 kj::Promise<void>
-LspMessageHandler::publishDiagnostics(kj::StringPtr fileName) {
+LspMessageHandler::publishDiagnostics(
+    kj::StringPtr fileName,
+    kj::Vector<kj::String> previousDiagnosticFiles) {
   KJ_LOG(INFO, "Publishing diagnostics");
 
+  bool publishedCurrentFile = false;
+  for (const auto &[uri, diagnostics] : diagnosticMap) {
+    if (uri == fileName) {
+      publishedCurrentFile = true;
+    }
+    (void)publishDiagnosticsForFile(uri, &diagnostics);
+  }
+
+  if (!publishedCurrentFile) {
+    (void)publishDiagnosticsForFile(fileName, nullptr);
+  }
+
+  for (auto &previousFile : previousDiagnosticFiles) {
+    bool stillHasDiagnostics = false;
+    CAPNP_LS_IF_SOME (diagnostics, diagnosticMap.find(previousFile)) {
+      (void)diagnostics;
+      stillHasDiagnostics = true;
+    }
+    if (previousFile != fileName && !stillHasDiagnostics) {
+      (void)publishDiagnosticsForFile(previousFile, nullptr);
+    }
+  }
+
+  return kj::READY_NOW;
+}
+
+kj::Promise<void> LspMessageHandler::publishDiagnosticsForFile(
+    kj::StringPtr fileName,
+    const kj::Vector<Diagnostic> *diagnostics) {
   try {
     capnp::MallocMessageBuilder messageBuilder;
     auto root = messageBuilder.initRoot<capnp::JsonValue>();
@@ -295,97 +349,68 @@ LspMessageHandler::publishDiagnostics(kj::StringPtr fileName) {
     notificationObj[2].setName(LSP_PARAMS);
     auto params = notificationObj[2].getValue().initObject(2);
 
-    if (diagnosticMap.size() == 0) {
-      // If there are no diagnostics, send an empty diagnostics array for the
-      // current file
-      params[0].setName("uri");
-      // Ensure fileName is relative to workspacePath
-      kj::StringPtr relativeFileName = fileName;
-      if (fileName.startsWith(workspacePath)) {
-        relativeFileName = fileName.slice(
-            workspacePath.size() + 1); // +1 for the trailing slash
-      }
-      kj::String fullUri =
-          kj::str("file://", workspacePath, "/", relativeFileName);
-      params[0].getValue().setString(fullUri);
-
-      params[1].setName("diagnostics");
-      params[1].getValue().initArray(0);
-
-      capnp::JsonCodec codec;
-      kj::String notificationStr = codec.encodeRaw(root);
-      kj::String message = kj::str(
-          LSP_CONTENT_LENGTH_HEADER,
-          notificationStr.size(),
-          LSP_HEADER_DELIMITER,
-          notificationStr);
-      (void)stdoutWriter.write(message);
-    } else {
-      for (const auto &[uri, diagnostics] : diagnosticMap) {
-        // Set URI
-        params[0].setName("uri");
-        // Ensure uri is relative to workspacePath
-        kj::StringPtr relativeUri = uri;
-        if (uri.startsWith(workspacePath)) {
-          relativeUri =
-              uri.slice(workspacePath.size() + 1); // +1 for the trailing slash
-        }
-        kj::String fullUri =
-            kj::str("file://", workspacePath, "/", relativeUri);
-        params[0].getValue().setString(fullUri);
-
-        // Set diagnostics array
-        params[1].setName("diagnostics");
-        auto diagnosticsArray =
-            params[1].getValue().initArray(diagnostics.size());
-
-        for (size_t i = 0; i < diagnostics.size(); i++) {
-          const auto &diagnostic = diagnostics[i];
-          auto diagnosticObj = diagnosticsArray[i].initObject(3);
-
-          // Set severity
-          diagnosticObj[0].setName("severity");
-          diagnosticObj[0].getValue().setNumber(1); // Error = 1
-
-          // Set message
-          diagnosticObj[1].setName("message");
-          diagnosticObj[1].getValue().setString(diagnostic.message);
-
-          // Set range
-          diagnosticObj[2].setName("range");
-          auto rangeObj = diagnosticObj[2].getValue().initObject(2);
-
-          // Start position
-          auto startObj = rangeObj[0];
-          startObj.setName("start");
-          auto start = startObj.getValue().initObject(2);
-          start[0].setName("line");
-          start[0].getValue().setNumber(diagnostic.range.start.line);
-          start[1].setName("character");
-          start[1].getValue().setNumber(diagnostic.range.start.character);
-
-          // End position
-          auto endObj = rangeObj[1];
-          endObj.setName("end");
-          auto end = endObj.getValue().initObject(2);
-          end[0].setName("line");
-          end[0].getValue().setNumber(diagnostic.range.end.line);
-          end[1].setName("character");
-          end[1].getValue().setNumber(diagnostic.range.end.character);
-        }
-
-        // Encode and send the notification
-        capnp::JsonCodec codec;
-        kj::String notificationStr = codec.encodeRaw(root);
-        kj::String message = kj::str(
-            LSP_CONTENT_LENGTH_HEADER,
-            notificationStr.size(),
-            LSP_HEADER_DELIMITER,
-            notificationStr);
-
-        (void)stdoutWriter.write(message);
-      }
+    // Set URI
+    params[0].setName("uri");
+    // Ensure fileName is relative to workspacePath
+    kj::StringPtr relativeFileName = fileName;
+    if (fileName.startsWith(workspacePath)) {
+      relativeFileName = fileName.slice(
+          workspacePath.size() + 1); // +1 for the trailing slash
     }
+    kj::String fullUri =
+        kj::str("file://", workspacePath, "/", relativeFileName);
+    params[0].getValue().setString(fullUri);
+
+    // Set diagnostics array
+    params[1].setName("diagnostics");
+    auto diagnosticsSize = diagnostics == nullptr ? 0 : diagnostics->size();
+    auto diagnosticsArray = params[1].getValue().initArray(diagnosticsSize);
+
+    for (size_t i = 0; i < diagnosticsSize; i++) {
+      const auto &diagnostic = (*diagnostics)[i];
+      auto diagnosticObj = diagnosticsArray[i].initObject(3);
+
+      // Set severity
+      diagnosticObj[0].setName("severity");
+      diagnosticObj[0].getValue().setNumber(1); // Error = 1
+
+      // Set message
+      diagnosticObj[1].setName("message");
+      diagnosticObj[1].getValue().setString(diagnostic.message);
+
+      // Set range
+      diagnosticObj[2].setName("range");
+      auto rangeObj = diagnosticObj[2].getValue().initObject(2);
+
+      // Start position
+      auto startObj = rangeObj[0];
+      startObj.setName("start");
+      auto start = startObj.getValue().initObject(2);
+      start[0].setName("line");
+      start[0].getValue().setNumber(diagnostic.range.start.line);
+      start[1].setName("character");
+      start[1].getValue().setNumber(diagnostic.range.start.character);
+
+      // End position
+      auto endObj = rangeObj[1];
+      endObj.setName("end");
+      auto end = endObj.getValue().initObject(2);
+      end[0].setName("line");
+      end[0].getValue().setNumber(diagnostic.range.end.line);
+      end[1].setName("character");
+      end[1].getValue().setNumber(diagnostic.range.end.character);
+    }
+
+    // Encode and send the notification
+    capnp::JsonCodec codec;
+    kj::String notificationStr = codec.encodeRaw(root);
+    kj::String message = kj::str(
+        LSP_CONTENT_LENGTH_HEADER,
+        notificationStr.size(),
+        LSP_HEADER_DELIMITER,
+        notificationStr);
+
+    (void)stdoutWriter.write(message);
   } catch (kj::Exception &e) {
     KJ_LOG(ERROR, "Error publishing diagnostics", e.getDescription());
   }

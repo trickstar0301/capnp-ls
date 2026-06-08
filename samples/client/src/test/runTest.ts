@@ -26,10 +26,7 @@ async function main() {
 		await fs.mkdir(userSettingsDir, { recursive: true });
 		await fs.writeFile(path.join(userSettingsDir, 'settings.json'), JSON.stringify({
 			'capnp-ls-client.languageServer.path': path.resolve(extensionDevelopmentPath, '../build/capnp-ls'),
-			'capnp-ls-client.languageServer.capnpChannel': 'v1',
-			'capnp-ls-client.server.extraEnv': {
-				CPP_LOG: 'lsp_server=info'
-			}
+			'capnp-ls-client.languageServer.capnpChannel': 'v1'
 		}, null, 2));
 
 		// Download VS Code, unzip it and run the integration test
