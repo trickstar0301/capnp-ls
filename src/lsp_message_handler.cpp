@@ -157,8 +157,8 @@ bool LspMessageHandler::reloadProjectConfig() {
 
   ProjectConfig loadedConfig;
   if (loadProjectConfig(workspacePath, loadedConfig)) {
-    KJ_IF_SOME(logLevel, loadedConfig.logLevel) {
-      currentLogLevel = logLevel;
+    CAPNP_LS_IF_SOME (logLevel, loadedConfig.logLevel) {
+      currentLogLevel = *logLevel;
     } else {
       currentLogLevel = defaultLogLevel;
     }
@@ -317,7 +317,8 @@ LspMessageHandler::publishDiagnostics(
 
   for (auto &previousFile : previousDiagnosticFiles) {
     bool stillHasDiagnostics = false;
-    CAPNP_LS_IF_SOME (_, diagnosticMap.find(previousFile)) {
+    CAPNP_LS_IF_SOME (diagnostics, diagnosticMap.find(previousFile)) {
+      (void)diagnostics;
       stillHasDiagnostics = true;
     }
     if (previousFile != fileName && !stillHasDiagnostics) {

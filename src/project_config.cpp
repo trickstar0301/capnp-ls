@@ -47,8 +47,8 @@ void parseProjectConfig(kj::StringPtr content, ProjectConfig &config) {
       }
     } else if (field.getName().asString() == kj::StringPtr("logLevel")) {
       KJ_REQUIRE(field.getValue().isString(), "logLevel must be a string");
-      KJ_IF_SOME(level, parseLogLevel(field.getValue().getString())) {
-        config.logLevel = level;
+      CAPNP_LS_IF_SOME (level, parseLogLevel(field.getValue().getString())) {
+        config.logLevel = *level;
       } else {
         KJ_FAIL_REQUIRE(
             "logLevel must be one of: error, warning, info",
