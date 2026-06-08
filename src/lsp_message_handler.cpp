@@ -87,13 +87,15 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
         case LspMethod::DID_SAVE:
           promise = handleDidSave(params);
           break;
+        case LspMethod::DID_CHANGE_WATCHED_FILES:
+          promise = handleDidChangeWatchedFiles(params);
+          break;
         case LspMethod::FORMATTING:
           promise = handleFormatting(params, *responseMessageBuilder);
           break;
         case LspMethod::INITIALIZED:
         case LspMethod::SET_TRACE:
         case LspMethod::CANCEL_REQUEST:
-        case LspMethod::DID_CHANGE_WATCHED_FILES:
         case LspMethod::DID_CHANGE:
         case LspMethod::DID_CLOSE:
           // KJ_LOG(INFO, "Ignoring method", method.cStr());

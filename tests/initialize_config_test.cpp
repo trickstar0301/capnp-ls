@@ -204,13 +204,19 @@ int main() {
         "initial log level should load from project config");
 
     writeConfig(workspace, R"({"importPaths":["two","three"],"logLevel":"warning"})");
-    require(handler.testReloadProjectConfig(), "valid config change should reload");
+    auto configPathString = (workspace / ".capnp-ls.json").string();
+    handler
+        .handleMessage(lspMessage(kj::str(
+            R"({"jsonrpc":"2.0","method":"workspace/didChangeWatchedFiles","params":{"changes":[{"uri":"file://)",
+            configPathString.c_str(),
+            R"(","type":2}]}})")))
+        .wait(io.waitScope);
     require(
         handler.testImportPathCount() == 2 && handler.testImportPath(0) == "two",
-        "changed project config should replace import paths");
+        "watched file change should reload project config import paths");
     require(
         handler.testLogLevel() == capnp_ls::LogLevel::WARNING,
-        "changed project config should replace log level");
+        "watched file change should reload project config log level");
 
     writeConfig(workspace, R"({"importPaths":[)");
     require(!handler.testReloadProjectConfig(), "invalid config should not reload");
