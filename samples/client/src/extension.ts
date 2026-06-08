@@ -18,6 +18,20 @@ import {
 let client: LanguageClient;
 
 type ReleasePlatform = 'linux-x86_64' | 'macos-arm64';
+type ServerExtraEnv = Record<string, string | number>;
+
+export function createServerEnvironment(
+	baseEnv: NodeJS.ProcessEnv,
+	extraEnv: ServerExtraEnv
+): NodeJS.ProcessEnv {
+	return {
+		...baseEnv,
+		CPP_LOG: 'lsp_server=warning',
+		...Object.fromEntries(
+			Object.entries(extraEnv).map(([key, value]) => [key, String(value)])
+		)
+	};
+}
 
 export async function activate(context: ExtensionContext) {
 	if (process.platform === 'win32') {
@@ -58,7 +72,7 @@ export async function activate(context: ExtensionContext) {
 	// Get configuration
 	const config = workspace.getConfiguration('capnp-ls-client');
 	const serverPathRaw = config.get<string>('languageServer.path');
-	const extraEnv = config.get<Record<string, string | number>>('server.extraEnv') || {};
+	const extraEnv = config.get<ServerExtraEnv>('server.extraEnv') || {};
 	const serverVersion = config.get<string>('languageServer.version');
 	const capnpChannel = config.get<string>('languageServer.capnpChannel');
 	if (!serverVersion || !capnpChannel) {
@@ -252,10 +266,7 @@ export async function activate(context: ExtensionContext) {
 		args: [],
 		options: {
 			cwd: path.dirname(resolvedServerPath),
-			env: {
-				...process.env,
-				...extraEnv
-			}
+			env: createServerEnvironment(process.env, extraEnv)
 		}
 	};
 
