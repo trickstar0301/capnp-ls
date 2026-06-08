@@ -62,7 +62,7 @@
 						]
 					},
 					"default": null,
-					"markdownDescription": "Extra environment variables that will be passed to the capnp-ls executable. Prefer `.capnp-ls.json` `logLevel` for workspace-specific logging; `CPP_LOG=lsp_server=info` can still set a process-wide fallback for debugging."
+					"markdownDescription": "Extra environment variables that will be passed to the capnp-ls executable."
 				}
 			}
 		},

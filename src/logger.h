@@ -17,7 +17,7 @@ namespace capnp_ls {
 class LspLogger : public kj::ExceptionCallback {
 public:
   LspLogger(StdoutWriter &writer) : writer(writer) {
-    auto level = logLevelFromEnvironment();
+    auto level = LogLevel::WARNING;
     applyLogLevel(level);
 
     // Log the current log level

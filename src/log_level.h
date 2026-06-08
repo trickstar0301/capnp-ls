@@ -5,7 +5,6 @@
 
 #pragma once
 
-#include <cstdlib>
 #include <kj/debug.h>
 #include <kj/string.h>
 
@@ -42,24 +41,6 @@ inline kj::LogSeverity toKjLogSeverity(LogLevel level) {
 
 inline void applyLogLevel(LogLevel level) {
   kj::_::Debug::setLogLevel(toKjLogSeverity(level));
-}
-
-inline LogLevel logLevelFromEnvironment() {
-  const char *logEnv = std::getenv("CPP_LOG");
-  if (logEnv == nullptr) {
-    return LogLevel::WARNING;
-  }
-
-  kj::StringPtr logStr(logEnv);
-  if (!logStr.startsWith("lsp_server=")) {
-    return LogLevel::WARNING;
-  }
-
-  KJ_IF_SOME(level, parseLogLevel(logStr.slice(11))) {
-    return level;
-  }
-
-  return LogLevel::WARNING;
 }
 
 } // namespace capnp_ls

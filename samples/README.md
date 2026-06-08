@@ -23,9 +23,6 @@ This extension contributes the following settings:
 * `capnp-ls-client.languageServer.capnpChannel`: Cap'n Proto compatibility channel for the automatically downloaded language server binary. Supported values are `v1` and `v2`.
   * Changing the server path, release version, or Cap'n Proto channel prompts you to reload VS Code so the new server binary is used.
 * `capnp-ls-client.server.extraEnv`: Extra environment variables that will be passed to the capnp-ls executable.
-  * `CPP_LOG`: Process-wide fallback log level for the Cap'n Proto language server. Prefer `.capnp-ls.json` for workspace-specific log level changes.
-    * Example: `CPP_LOG=lsp_server=info`: Set the fallback log level to info.
-    * Default: `CPP_LOG=lsp_server=warning`
 
 #### Example configuration:
 

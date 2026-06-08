@@ -7,22 +7,22 @@ import * as assert from 'assert';
 import { createServerEnvironment } from '../extension';
 
 suite('Server Environment', () => {
-	test('defaults CPP_LOG to warning instead of inheriting parent CPP_LOG', () => {
+	test('preserves the parent environment without adding CPP_LOG', () => {
 		const env = createServerEnvironment(
-			{ CPP_LOG: 'lsp_server=info', PATH: '/bin' },
+			{ PATH: '/bin' },
 			{}
 		);
 
-		assert.strictEqual(env.CPP_LOG, 'lsp_server=warning');
+		assert.strictEqual(env.CPP_LOG, undefined);
 		assert.strictEqual(env.PATH, '/bin');
 	});
 
-	test('allows extraEnv to override default CPP_LOG', () => {
+	test('allows extraEnv to add stringified values', () => {
 		const env = createServerEnvironment(
-			{ CPP_LOG: 'lsp_server=warning' },
-			{ CPP_LOG: 'lsp_server=info' }
+			{ PATH: '/bin' },
+			{ CAPNP_LS_TEST_VALUE: 123 }
 		);
 
-		assert.strictEqual(env.CPP_LOG, 'lsp_server=info');
+		assert.strictEqual(env.CAPNP_LS_TEST_VALUE, '123');
 	});
 });

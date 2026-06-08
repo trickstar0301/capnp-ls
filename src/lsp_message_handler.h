@@ -78,7 +78,7 @@ private:
   kj::String workspacePath;
   kj::Vector<kj::String> importPaths;
   bool importPathsConfiguredByInitialization = false;
-  LogLevel defaultLogLevel = logLevelFromEnvironment();
+  LogLevel defaultLogLevel = LogLevel::WARNING;
   LogLevel currentLogLevel = defaultLogLevel;
   ServerContext &context;
   kj::Own<CompilationManager> compilationManager;

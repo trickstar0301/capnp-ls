@@ -155,6 +155,9 @@ int main() {
         handler.testWorkspacePath() == CAPNP_LS_TEST_FIXTURE_DIR,
         "rootUri should be used when workspaceFolders is null");
     require(
+        handler.testLogLevel() == capnp_ls::LogLevel::WARNING,
+        "server log level should default to warning");
+    require(
         handler.testImportPathCount() == 2,
         "rootUri initialize should load .capnp-ls.json import paths");
 

@@ -9,10 +9,8 @@
 #include "project_config.h"
 #include "symbol_resolver.h"
 #include <capnp/schema.capnp.h>
-#include <cstdlib>
 #include <kj/debug.h>
 #include <kj/string.h>
-#include <string>
 
 namespace {
 
@@ -59,27 +57,6 @@ void requireDiagnosticContaining(
 } // namespace
 
 int main() {
-  const char *previousLogEnv = std::getenv("CPP_LOG");
-  bool hadPreviousLogEnv = previousLogEnv != nullptr;
-  std::string previousLogEnvValue = hadPreviousLogEnv ? previousLogEnv : "";
-  unsetenv("CPP_LOG");
-  require(
-      capnp_ls::logLevelFromEnvironment() == capnp_ls::LogLevel::WARNING,
-      "server log level should default to warning");
-  setenv("CPP_LOG", "lsp_server=info", 1);
-  require(
-      capnp_ls::logLevelFromEnvironment() == capnp_ls::LogLevel::INFO,
-      "server log level should use explicit info from CPP_LOG");
-  setenv("CPP_LOG", "lsp_server=debug", 1);
-  require(
-      capnp_ls::logLevelFromEnvironment() == capnp_ls::LogLevel::WARNING,
-      "unknown CPP_LOG level should fall back to warning");
-  if (hadPreviousLogEnv) {
-    setenv("CPP_LOG", previousLogEnvValue.c_str(), 1);
-  } else {
-    unsetenv("CPP_LOG");
-  }
-
   kj::Vector<kj::String> importPaths;
   importPaths.add(kj::heapString("schemas/common"));
 
