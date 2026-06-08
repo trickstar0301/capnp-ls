@@ -3,7 +3,7 @@
 	"description": "A language client of Cap'n Proto Language Server",
 	"author": "Atsushi Tomida",
 	"license": "MIT",
-	"version": "0.3.2",
+	"version": "0.3.3",
 	"packageManager": "pnpm@11.5.2",
 	"repository": {
 		"type": "git",
@@ -76,7 +76,15 @@
 					"Cap'n Proto",
 					"capnp",
 					"capnproto"
-				]
+				],
+				"configuration": "./language-configuration.json"
+			}
+		],
+		"grammars": [
+			{
+				"language": "capnp",
+				"scopeName": "source.capnp",
+				"path": "./syntaxes/capnp.tmLanguage.json"
 			}
 		]
 	},

@@ -1,0 +1,110 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Cap'n Proto",
+  "scopeName": "source.capnp",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#file-id" },
+    { "include": "#annotations" },
+    { "include": "#imports" },
+    { "include": "#keywords" },
+    { "include": "#builtins" },
+    { "include": "#ordinals" },
+    { "include": "#numbers" },
+    { "include": "#identifiers" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.capnp",
+          "match": "#.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.capnp",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.capnp",
+              "match": "\\\\(?:[abfnrtv\\\\\"']|x[0-9A-Fa-f]{2}|u\\{[0-9A-Fa-f]+\\})"
+            }
+          ]
+        }
+      ]
+    },
+    "file-id": {
+      "patterns": [
+        {
+          "name": "constant.numeric.file-id.capnp",
+          "match": "@0x[0-9A-Fa-f]+\\b"
+        }
+      ]
+    },
+    "annotations": {
+      "patterns": [
+        {
+          "name": "entity.name.function.annotation.capnp",
+          "match": "\\$[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*"
+        }
+      ]
+    },
+    "imports": {
+      "patterns": [
+        {
+          "name": "keyword.control.import.capnp",
+          "match": "\\b(?:using|import)\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.declaration.capnp",
+          "match": "\\b(?:annotation|const|enum|extends|group|interface|struct|union)\\b"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.type.builtin.capnp",
+          "match": "\\b(?:AnyPointer|Bool|Data|Float32|Float64|Int8|Int16|Int32|Int64|List|Text|UInt8|UInt16|UInt32|UInt64|Void)\\b"
+        }
+      ]
+    },
+    "ordinals": {
+      "patterns": [
+        {
+          "name": "constant.numeric.ordinal.capnp",
+          "match": "@\\d+\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.capnp",
+          "match": "\\b(?:0x[0-9A-Fa-f]+|\\d+(?:\\.\\d+)?)\\b"
+        }
+      ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "name": "entity.name.type.capnp",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        },
+        {
+          "name": "variable.other.capnp",
+          "match": "\\b[a-z_][A-Za-z0-9_]*\\b"
+        }
+      ]
+    }
+  }
+}
