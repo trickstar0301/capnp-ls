@@ -132,10 +132,11 @@ gh release upload \
 
 Project-specific schema settings live in `.capnp-ls.json` at the workspace root.
 Commit this file with your schemas so every editor and agent uses the same
-Cap'n Proto import paths:
+Cap'n Proto import paths and log level:
 
 ```json
 {
+  "logLevel": "warning",
   "importPaths": [
     "schemas/common",
     "vendor/capnp"
@@ -148,6 +149,9 @@ Fields:
 - `importPaths`: An array of import paths for Cap'n Proto schemas.
   - Relative paths are resolved from the workspace root.
   - When multiple import paths are provided, they are searched in the specified order, similar to how the Cap'n Proto compiler operates.
+- `logLevel`: The workspace log level for the language server.
+  - Supported values are `error`, `warning`, and `info`.
+  - The default is `warning`.
 
 Clients should initialize the language server with either `workspaceFolders` or
 `rootUri` so `capnp-ls` can locate the workspace root. For Neovim and similar
@@ -155,7 +159,8 @@ clients, use `.capnp-ls.json` or `.git` as the root marker.
 
 When the client sends watched-file notifications for `.capnp-ls.json`, the
 server reloads the config without a restart. Invalid JSON keeps the last valid
-configuration; deleting `.capnp-ls.json` clears project import paths.
+configuration; deleting `.capnp-ls.json` clears project import paths and
+restores the default `warning` log level.
 
 ## Language Server Protocol Support
 
