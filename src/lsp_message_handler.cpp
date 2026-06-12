@@ -4,6 +4,7 @@
 // See LICENSE file in the project root for full license information.
 
 #include "lsp_message_handler.h"
+#include "json_rpc.h"
 #include "kj_compat.h"
 #include "lsp_types.h"
 #include "project_config.h"
@@ -193,7 +194,7 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
         CAPNP_LS_IF_SOME (requestId, maybeRequestId) {
           CAPNP_LS_IF_SOME (
               responseString,
-              buildErrorResponseString(*requestId, -32601, "Method not found")) {
+              capnp_ls::buildErrorResponseString(*requestId, -32601, "Method not found")) {
             (void)stdoutWriter.write(*responseString);
           }
           return kj::READY_NOW;
@@ -206,7 +207,7 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
              id = *requestId,
              builder = kj::mv(responseMessageBuilder)]() mutable {
               auto response = builder->getRoot<capnp::JsonValue>().asReader();
-              CAPNP_LS_IF_SOME (responseString, buildResponseString(id, response)) {
+              CAPNP_LS_IF_SOME (responseString, capnp_ls::buildResponseString(id, response)) {
                 (void)stdoutWriter.write(*responseString);
               }
               return kj::Promise<void>(kj::READY_NOW);
@@ -281,95 +282,6 @@ bool LspMessageHandler::reloadProjectConfig() {
 
   KJ_LOG(ERROR, "Keeping previous project config because reload failed");
   return false;
-}
-
-kj::Maybe<kj::String> LspMessageHandler::buildResponseString(
-    const double id,
-    const capnp::JsonValue::Reader &result) {
-  try {
-    capnp::MallocMessageBuilder messageBuilder;
-    auto root = messageBuilder.initRoot<capnp::JsonValue>();
-    auto obj = root.initObject(3);
-
-    obj[0].setName(LSP_JSONRPC);
-    obj[0].getValue().setString(LSP_JSON_RPC_VERSION);
-
-    obj[1].setName(LSP_ID);
-    obj[1].getValue().setNumber(id);
-
-    obj[2].setName(LSP_RESULT);
-    if (!result.isObject() || result.getObject().size() == 0) {
-      obj[2].getValue().setNull();
-    } else {
-      auto resultValue = result.getObject()[0].getValue();
-      if (resultValue.isObject()) {
-        obj[2].getValue().setObject(resultValue.getObject());
-      } else if (resultValue.isArray()) {
-        obj[2].getValue().setArray(resultValue.getArray());
-      } else if (resultValue.isString()) {
-        obj[2].getValue().setString(resultValue.getString());
-      } else if (resultValue.isNumber()) {
-        obj[2].getValue().setNumber(resultValue.getNumber());
-      } else if (resultValue.isBoolean()) {
-        obj[2].getValue().setBoolean(resultValue.getBoolean());
-      } else {
-        obj[2].getValue().setNull();
-      }
-    }
-
-    capnp::JsonCodec codec;
-    kj::String responseStr =
-        codec.encodeRaw(messageBuilder.getRoot<capnp::JsonValue>());
-    // KJ_LOG(INFO, "Encoded response", responseStr.cStr());
-
-    return kj::str(
-        LSP_CONTENT_LENGTH_HEADER,
-        responseStr.size(),
-        LSP_HEADER_DELIMITER,
-        responseStr);
-  } catch (kj::Exception &e) {
-    KJ_LOG(ERROR, "Error building response string", e.getDescription());
-    return CAPNP_LS_NONE;
-  }
-}
-
-kj::Maybe<kj::String> LspMessageHandler::buildErrorResponseString(
-    const double id,
-    int code,
-    kj::StringPtr message) {
-  try {
-    capnp::MallocMessageBuilder messageBuilder;
-    auto root = messageBuilder.initRoot<capnp::JsonValue>();
-    auto obj = root.initObject(3);
-
-    obj[0].setName(LSP_JSONRPC);
-    obj[0].getValue().setString(LSP_JSON_RPC_VERSION);
-
-    obj[1].setName(LSP_ID);
-    obj[1].getValue().setNumber(id);
-
-    obj[2].setName(LSP_ERROR);
-    auto error = obj[2].getValue().initObject(2);
-
-    error[0].setName("code");
-    error[0].getValue().setNumber(code);
-
-    error[1].setName("message");
-    error[1].getValue().setString(message);
-
-    capnp::JsonCodec codec;
-    kj::String responseStr =
-        codec.encodeRaw(messageBuilder.getRoot<capnp::JsonValue>());
-
-    return kj::str(
-        LSP_CONTENT_LENGTH_HEADER,
-        responseStr.size(),
-        LSP_HEADER_DELIMITER,
-        responseStr);
-  } catch (kj::Exception &e) {
-    KJ_LOG(ERROR, "Error building error response string", e.getDescription());
-    return CAPNP_LS_NONE;
-  }
 }
 
 kj::Promise<void> LspMessageHandler::compileCapnpFile(kj::StringPtr uri) {

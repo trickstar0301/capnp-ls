@@ -25,6 +25,7 @@ add_executable(${exe_name}
     src/stdin_reader.cpp
     src/stdout_writer.cpp
     src/lsp_message_handler.cpp
+    src/json_rpc.cpp
     src/lsp_types.cpp
     src/project_config.cpp
     src/utils.cpp
@@ -66,6 +67,20 @@ if(CAPNP_LS_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/src
     )
     add_test(NAME lsp-types COMMAND capnp-ls-lsp-types-test)
+    add_executable(capnp-ls-json-rpc-test
+        tests/json_rpc_test.cpp
+        src/json_rpc.cpp
+        src/lsp_types.cpp
+    )
+    target_link_libraries(capnp-ls-json-rpc-test PRIVATE
+        capnp-json
+        capnp
+        kj
+    )
+    target_include_directories(capnp-ls-json-rpc-test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    add_test(NAME json-rpc COMMAND capnp-ls-json-rpc-test)
     add_executable(capnp-ls-linked-compiler-test
         tests/linked_compiler_test.cpp
         src/project_config.cpp
@@ -76,6 +91,7 @@ if(CAPNP_LS_BUILD_TESTS)
         tests/initialize_config_test.cpp
         src/stdout_writer.cpp
         src/lsp_message_handler.cpp
+        src/json_rpc.cpp
         src/lsp_types.cpp
         src/project_config.cpp
         src/utils.cpp
