@@ -40,6 +40,9 @@ struct TypeInfo {
 // Converts byte offsets to positions, reading each file once per instance.
 class PositionCalculator {
 public:
+  explicit PositionCalculator(kj::Filesystem &filesystem)
+      : filesystem(filesystem) {}
+
   Position getPosition(kj::StringPtr filePath, size_t byteOffset) {
     auto &table = lineTables.findOrCreate(
         filePath,
@@ -68,9 +71,8 @@ private:
     size_t contentSize;
   };
 
-  static LineTable buildLineTable(kj::StringPtr filePath) {
-    auto fs = kj::newDiskFilesystem();
-    auto file = fs->getRoot().openFile(kj::Path::parse(filePath.slice(1)));
+  LineTable buildLineTable(kj::StringPtr filePath) {
+    auto file = filesystem.getRoot().openFile(kj::Path::parse(filePath.slice(1)));
     auto content = file->readAllText();
     kj::Vector<size_t> lineStarts;
     lineStarts.add(0);
@@ -82,6 +84,7 @@ private:
     return LineTable{kj::mv(lineStarts), content.size()};
   }
 
+  kj::Filesystem &filesystem;
   kj::HashMap<kj::String, LineTable> lineTables;
 };
 
@@ -255,6 +258,7 @@ void addMemberDocumentSymbols(
 
 kj::String extractFilePath(
     kj::StringPtr displayName,
+    kj::Filesystem &fs,
     const kj::Vector<kj::String> &importPaths,
     kj::StringPtr workspacePath) {
   // extract file path from display name. if filename exists in import paths,
@@ -275,9 +279,8 @@ kj::String extractFilePath(
   }
   auto relativeFilePath = kj::Path::parse(relativeFilePathString);
   // Try workspace path first
-  auto fs = kj::newDiskFilesystem();
-  const kj::Directory &currentDir = fs->getCurrent();
-  auto currentPath = fs->getCurrentPath();
+  const kj::Directory &currentDir = fs.getCurrent();
+  auto currentPath = fs.getCurrentPath();
   auto workspaceRelativePath =
       kj::Path::parse(workspacePath.startsWith("/")
                           ? workspacePath.slice(1)
@@ -288,14 +291,14 @@ kj::String extractFilePath(
     if (importPath.startsWith("/")) {
       auto parsed = kj::Path::parse(importPath.slice(1));
       auto eval = parsed.eval(relativeFilePathString);
-      if (fs->getRoot().exists(eval)) {
+      if (fs.getRoot().exists(eval)) {
         KJ_LOG(INFO, "Found file in absolute import path", eval.toNativeString());
         return eval.toNativeString(true);
       }
     } else {
       auto workspaceImportPath =
           workspaceRelativePath.eval(importPath).eval(relativeFilePathString);
-      if (fs->getRoot().exists(workspaceImportPath)) {
+      if (fs.getRoot().exists(workspaceImportPath)) {
         KJ_LOG(
             INFO,
             "Found file in workspace-relative import path",
@@ -308,7 +311,7 @@ kj::String extractFilePath(
   };
 
   auto workspaceFilePath = workspaceRelativePath.eval(relativeFilePathString);
-  if (fs->getRoot().exists(workspaceFilePath)) {
+  if (fs.getRoot().exists(workspaceFilePath)) {
     // exists in workspace
     KJ_LOG(INFO, "Found file in workspace", relativeFilePathString);
     return workspaceFilePath.toNativeString(true);
@@ -438,6 +441,7 @@ void indexDeclarationNode(
 
 int SymbolResolver::resolve(
     capnp::schema::CodeGeneratorRequest::Reader request,
+    kj::Filesystem &filesystem,
     SymbolIndex &index,
     const kj::Vector<kj::String> &importPaths,
     const kj::StringPtr &workspacePath) {
@@ -465,7 +469,7 @@ int SymbolResolver::resolve(
       sourceInfoMap.upsert(sourceInfo.getId(), sourceInfo);
     }
 
-    PositionCalculator positionCalculator;
+    PositionCalculator positionCalculator(filesystem);
 
     // extractFilePath probes the filesystem, so resolve each display name
     // prefix only once per request.
@@ -482,7 +486,7 @@ int SymbolResolver::resolve(
           [&]() -> kj::HashMap<kj::String, kj::String>::Entry {
             return {
                 kj::mv(key),
-                extractFilePath(displayName, importPaths, workspacePath)};
+                extractFilePath(displayName, filesystem, importPaths, workspacePath)};
           });
     };
 

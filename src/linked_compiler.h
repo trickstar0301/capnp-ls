@@ -7,6 +7,7 @@
 
 #include "lsp_types.h"
 #include <capnp/message.h>
+#include <kj/filesystem.h>
 #include <kj/map.h>
 #include <kj/string.h>
 #include <kj/vector.h>
@@ -24,6 +25,7 @@ public:
       kj::StringPtr fileName,
       kj::StringPtr workingDir,
       const kj::Vector<kj::String> &importPaths,
+      kj::Filesystem &filesystem,
       kj::HashMap<kj::String, kj::Vector<Diagnostic>> &diagnosticMap);
 };
 

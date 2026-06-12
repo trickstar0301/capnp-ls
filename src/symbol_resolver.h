@@ -8,12 +8,14 @@
 #include "lsp_types.h"
 #include "symbol_index.h"
 #include <capnp/schema.capnp.h>
+#include <kj/filesystem.h>
 #include <kj/map.h>
 
 namespace capnp_ls {
 class SymbolResolver {
 public:
   static int resolve(capnp::schema::CodeGeneratorRequest::Reader request,
+                     kj::Filesystem &filesystem,
                      SymbolIndex &index,
                      const kj::Vector<kj::String> &importPaths,
                      const kj::StringPtr &workspacePath);

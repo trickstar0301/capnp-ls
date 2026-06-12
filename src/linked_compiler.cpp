@@ -215,16 +215,16 @@ LinkedCompileResult LinkedCompiler::compile(
     kj::StringPtr fileName,
     kj::StringPtr workingDir,
     const kj::Vector<kj::String> &importPaths,
+    kj::Filesystem &filesystem,
     kj::HashMap<kj::String, kj::Vector<Diagnostic>> &diagnosticMap) {
   diagnosticMap.clear();
 
-  auto filesystem = kj::newDiskFilesystem();
   DiagnosticReporter reporter(diagnosticMap);
   kj::Vector<SourceDirectory> ownedDirectories;
 
   const kj::ReadableDirectory *workspaceDir = nullptr;
   CAPNP_LS_IF_SOME (dir, tryOpenDirectory(
-                       *filesystem, workingDir, ownedDirectories, reporter)) {
+                       filesystem, workingDir, ownedDirectories, reporter)) {
     workspaceDir = dir;
   } else {
     addCompilerDiagnostic(
@@ -239,7 +239,7 @@ LinkedCompileResult LinkedCompiler::compile(
     auto resolvedImportPath = resolveDirectoryPath(importPath, workingDir);
     if (!addRequiredImportPath(
             loader,
-            *filesystem,
+            filesystem,
             resolvedImportPath,
             ownedDirectories,
             reporter,
@@ -251,14 +251,14 @@ LinkedCompileResult LinkedCompiler::compile(
 
   addOptionalImportPath(
       loader,
-      *filesystem,
+      filesystem,
       kj::str(CAPNP_LS_CAPNP_SOURCE_DIR, "/src"),
       ownedDirectories,
       reporter);
 
   auto relativeFileName = relativeTo(fileName, workingDir);
   kj::Path sourcePath = parseAbsolutePath(fileName);
-  const kj::ReadableDirectory *sourceDir = &filesystem->getRoot();
+  const kj::ReadableDirectory *sourceDir = &filesystem.getRoot();
   CAPNP_LS_IF_SOME (relative, relativeFileName) {
     sourcePath = kj::Path::parse(*relative);
     sourceDir = workspaceDir;

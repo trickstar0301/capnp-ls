@@ -10,6 +10,7 @@
 #include "symbol_index.h"
 #include "symbol_resolver.h"
 #include <kj/async-io.h>
+#include <kj/filesystem.h>
 #include <kj/map.h>
 #include <kj/string.h>
 #include <kj/vector.h>
@@ -39,5 +40,8 @@ public:
   };
 
   kj::Promise<void> compile(CompileParams params);
+
+private:
+  kj::Own<kj::Filesystem> filesystem = kj::newDiskFilesystem();
 };
 } // namespace capnp_ls

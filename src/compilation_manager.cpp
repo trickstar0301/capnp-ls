@@ -17,6 +17,7 @@ kj::Promise<void> CompilationManager::compile(CompileParams params) {
         params.fileName,
         params.workingDir,
         params.importPaths,
+        *filesystem,
         params.index.diagnosticMap);
 
     if (!result.success) {
@@ -29,6 +30,7 @@ kj::Promise<void> CompilationManager::compile(CompileParams params) {
           (*requestMessage)->getRoot<capnp::schema::CodeGeneratorRequest>();
       SymbolResolver::resolve(
           request,
+          *filesystem,
           params.index,
           params.importPaths,
           params.workingDir);

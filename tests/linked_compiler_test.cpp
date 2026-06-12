@@ -70,6 +70,8 @@ bool hasDocumentSymbol(
 } // namespace
 
 int main() {
+  auto filesystem = kj::newDiskFilesystem();
+
   kj::Vector<kj::String> importPaths;
   importPaths.add(kj::heapString("schemas/common"));
 
@@ -116,6 +118,7 @@ int main() {
       fixturePath("schemas/company.capnp"),
       CAPNP_LS_TEST_FIXTURE_DIR,
       configuredImportPaths,
+      *filesystem,
       index.diagnosticMap);
   require(configuredResult.success, "project config import paths should compile");
   require(
@@ -127,6 +130,7 @@ int main() {
       fixturePath("schemas/company.capnp"),
       CAPNP_LS_TEST_FIXTURE_DIR,
       importPaths,
+      *filesystem,
       index.diagnosticMap);
 
   require(validResult.success, "valid fixture should compile");
@@ -147,7 +151,7 @@ int main() {
       "request should contain identifier resolutions");
 
   auto resolveResult = capnp_ls::SymbolResolver::resolve(
-      request, index, importPaths, CAPNP_LS_TEST_FIXTURE_DIR);
+      request, *filesystem, index, importPaths, CAPNP_LS_TEST_FIXTURE_DIR);
   require(resolveResult == 0, "symbol resolver should resolve valid fixture");
 
   auto companyPath = fixturePath("schemas/company.capnp");
@@ -206,7 +210,7 @@ int main() {
   auto qualifiedImportReferenceCount =
       KJ_ASSERT_NONNULL(index.referenceMap.find(qualifiedImportId)).size();
   resolveResult = capnp_ls::SymbolResolver::resolve(
-      request, index, importPaths, CAPNP_LS_TEST_FIXTURE_DIR);
+      request, *filesystem, index, importPaths, CAPNP_LS_TEST_FIXTURE_DIR);
   require(resolveResult == 0, "symbol resolver should resolve fixture again");
   require(
       KJ_ASSERT_NONNULL(index.documentSymbolMap.find(companyPath)).size() ==
@@ -231,6 +235,7 @@ int main() {
       fixturePath("schemas/standard_import.capnp"),
       CAPNP_LS_TEST_FIXTURE_DIR,
       noImportPaths,
+      *filesystem,
       index.diagnosticMap);
   require(
       standardImportResult.success,
@@ -249,7 +254,7 @@ int main() {
   index.referenceMap.clear();
   index.documentSymbolMap.clear();
   resolveResult = capnp_ls::SymbolResolver::resolve(
-      standardImportRequest, index, noImportPaths,
+      standardImportRequest, *filesystem, index, noImportPaths,
       CAPNP_LS_TEST_FIXTURE_DIR);
   require(
       resolveResult == 0,
@@ -263,6 +268,7 @@ int main() {
       fixturePath("schemas/company.capnp"),
       CAPNP_LS_TEST_FIXTURE_DIR,
       badImportPaths,
+      *filesystem,
       index.diagnosticMap);
   require(!badImportPathResult.success, "missing import path should fail");
   requireDiagnosticContaining(index.diagnosticMap, "Import path does not exist");
@@ -272,6 +278,7 @@ int main() {
       fixturePath("schemas/error_company.capnp"),
       CAPNP_LS_TEST_FIXTURE_DIR,
       importPaths,
+      *filesystem,
       index.diagnosticMap);
 
   require(!invalidResult.success, "invalid fixture should fail");
