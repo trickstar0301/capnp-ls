@@ -150,12 +150,7 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
 }
 
 void LspMessageHandler::clearCompilationState() {
-  fileSourceInfoMap.clear();
-  nodeLocationMap.clear();
-  nodeMetadataMap.clear();
-  referenceMap.clear();
-  documentSymbolMap.clear();
-  diagnosticMap.clear();
+  index.clear();
 }
 
 bool LspMessageHandler::isProjectConfigPath(kj::StringPtr path) {
@@ -211,7 +206,7 @@ kj::Promise<void> LspMessageHandler::compileCapnpFile(kj::StringPtr uri) {
   auto strippedUri = uriToPath(uri);
   if (strippedUri.endsWith(".capnp")) {
     kj::Vector<kj::String> previousDiagnosticFiles;
-    for (const auto &[diagnosticUri, _] : diagnosticMap) {
+    for (const auto &[diagnosticUri, _] : index.diagnosticMap) {
       previousDiagnosticFiles.add(kj::heapString(diagnosticUri));
     }
 
@@ -220,12 +215,12 @@ kj::Promise<void> LspMessageHandler::compileCapnpFile(kj::StringPtr uri) {
             importPaths,
             strippedUri,
             workspacePath,
-            fileSourceInfoMap,
-            nodeLocationMap,
-            nodeMetadataMap,
-            referenceMap,
-            documentSymbolMap,
-            diagnosticMap))
+            index.fileSourceInfoMap,
+            index.nodeLocationMap,
+            index.nodeMetadataMap,
+            index.referenceMap,
+            index.documentSymbolMap,
+            index.diagnosticMap))
         .then([this,
                strippedUri = kj::mv(strippedUri),
                previousDiagnosticFiles = kj::mv(previousDiagnosticFiles)]() mutable {
@@ -244,7 +239,7 @@ LspMessageHandler::publishDiagnostics(
   KJ_LOG(INFO, "Publishing diagnostics");
 
   bool publishedCurrentFile = false;
-  for (const auto &[uri, diagnostics] : diagnosticMap) {
+  for (const auto &[uri, diagnostics] : index.diagnosticMap) {
     if (uri == fileName) {
       publishedCurrentFile = true;
     }
@@ -257,7 +252,7 @@ LspMessageHandler::publishDiagnostics(
 
   for (auto &previousFile : previousDiagnosticFiles) {
     bool stillHasDiagnostics = false;
-    CAPNP_LS_IF_SOME (diagnostics, diagnosticMap.find(previousFile)) {
+    CAPNP_LS_IF_SOME (diagnostics, index.diagnosticMap.find(previousFile)) {
       (void)diagnostics;
       stillHasDiagnostics = true;
     }
@@ -368,28 +363,7 @@ kj::Maybe<uint64_t> LspMessageHandler::findNodeIdAtPosition(
     kj::StringPtr path,
     uint32_t line,
     uint32_t character) {
-  CAPNP_LS_IF_SOME (rangeMap, fileSourceInfoMap.find(path)) {
-    for (const auto &[range, id] : *rangeMap) {
-      if (containsPosition(range, line, character)) {
-        return id;
-      }
-    }
-  }
-
-  // Fall back to declaration ranges, picking the most deeply nested one.
-  kj::Maybe<uint64_t> bestId = CAPNP_LS_NONE;
-  const Range *bestRange = nullptr;
-  for (const auto &[id, location] : nodeLocationMap) {
-    if (location->uri != path ||
-        !containsPosition(location->range, line, character)) {
-      continue;
-    }
-    if (bestRange == nullptr || isTighterRange(location->range, *bestRange)) {
-      bestId = id;
-      bestRange = &location->range;
-    }
-  }
-  return bestId;
+  return index.findNodeIdAtPosition(path, line, character);
 }
 
 kj::Promise<void> LspMessageHandler::handleDefinition(
@@ -408,7 +382,7 @@ kj::Promise<void> LspMessageHandler::handleDefinition(
         findNodeIdAtPosition(position.path, position.line, position.character);
 
     CAPNP_LS_IF_SOME (id, maybeId) {
-      CAPNP_LS_IF_SOME (location, nodeLocationMap.find(*id)) {
+      CAPNP_LS_IF_SOME (location, index.nodeLocationMap.find(*id)) {
         setLocation(resultField.getValue(), **location);
         return kj::READY_NOW;
       }
@@ -437,7 +411,7 @@ kj::Promise<void> LspMessageHandler::handleHover(
         findNodeIdAtPosition(position.path, position.line, position.character);
 
     CAPNP_LS_IF_SOME (id, maybeId) {
-      CAPNP_LS_IF_SOME (metadata, nodeMetadataMap.find(*id)) {
+      CAPNP_LS_IF_SOME (metadata, index.nodeMetadataMap.find(*id)) {
         auto hoverObj = resultField.getValue().initObject(1);
         hoverObj[0].setName("contents");
         auto contents = hoverObj[0].getValue().initObject(2);
@@ -497,9 +471,9 @@ kj::Promise<void> LspMessageHandler::handleReferences(
         findNodeIdAtPosition(position.path, position.line, position.character);
 
     CAPNP_LS_IF_SOME (id, maybeId) {
-      CAPNP_LS_IF_SOME (references, referenceMap.find(*id)) {
+      CAPNP_LS_IF_SOME (references, index.referenceMap.find(*id)) {
         const Location *declaration = nullptr;
-        CAPNP_LS_IF_SOME (declarationLocation, nodeLocationMap.find(*id)) {
+        CAPNP_LS_IF_SOME (declarationLocation, index.nodeLocationMap.find(*id)) {
           declaration = declarationLocation->get();
         }
 
@@ -547,7 +521,7 @@ kj::Promise<void> LspMessageHandler::handleDocumentSymbol(
 
   try {
     auto path = parseTextDocumentPath(params);
-    CAPNP_LS_IF_SOME (symbols, documentSymbolMap.find(path)) {
+    CAPNP_LS_IF_SOME (symbols, index.documentSymbolMap.find(path)) {
       auto array = resultField.getValue().initArray(symbols->size());
       for (size_t i = 0; i < symbols->size(); ++i) {
         const auto &symbol = (*symbols)[i];

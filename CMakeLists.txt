@@ -33,6 +33,7 @@ add_executable(${exe_name}
     src/linked_compiler.cpp
     src/compilation_manager.cpp
     src/symbol_resolver.cpp
+    src/symbol_index.cpp
 )
 
 if(NOT EXISTS "${CAPNP_SOURCE_DIR}/src/capnp/compiler/compiler.h")
@@ -115,6 +116,7 @@ if(CAPNP_LS_BUILD_TESTS)
         src/linked_compiler.cpp
         src/compilation_manager.cpp
         src/symbol_resolver.cpp
+        src/symbol_index.cpp
     )
     target_sources(capnp-ls-initialize-config-test PRIVATE
         "${CAPNP_SOURCE_DIR}/src/capnp/compiler/module-loader.c++"
