@@ -5,6 +5,8 @@
 
 #include <kj/debug.h>
 
+#include <cstdint>
+
 #include "utils.h"
 
 namespace capnp_ls {
@@ -20,10 +22,10 @@ int hexDigitValue(char c) {
 }
 
 // Helper to convert byte value to uppercase hex character pair.
-void byteToHex(uint8_t byte, char &high, char &low) {
+void byteToHex(std::uint8_t value, char &high, char &low) {
   const char hexTable[] = "0123456789ABCDEF";
-  high = hexTable[byte >> 4];
-  low = hexTable[byte & 0x0F];
+  high = hexTable[value >> 4];
+  low = hexTable[value & 0x0F];
 }
 
 } // namespace
@@ -46,7 +48,7 @@ kj::String uriToPath(const kj::StringPtr uri) {
       int low = hexDigitValue(path[i + 2]);
       if (high >= 0 && low >= 0) {
         // Valid hex sequence: decode it
-        uint8_t decodedByte = (high << 4) | low;
+        std::uint8_t decodedByte = (high << 4) | low;
         decoded.add(decodedByte);
         i += 3;
       } else {
@@ -73,17 +75,17 @@ kj::String pathToUri(const kj::StringPtr path) {
 
   // Encode path bytes: keep unreserved chars [A-Za-z0-9-._~] and '/' as-is
   for (size_t i = 0; i < path.size(); i++) {
-    uint8_t byte = static_cast<uint8_t>(path[i]);
-    if ((byte >= 'A' && byte <= 'Z') ||
-        (byte >= 'a' && byte <= 'z') ||
-        (byte >= '0' && byte <= '9') ||
-        byte == '-' || byte == '.' || byte == '_' || byte == '~' || byte == '/') {
-      encoded.add(byte);
+    std::uint8_t pathByte = static_cast<std::uint8_t>(path[i]);
+    if ((pathByte >= 'A' && pathByte <= 'Z') ||
+        (pathByte >= 'a' && pathByte <= 'z') ||
+        (pathByte >= '0' && pathByte <= '9') ||
+        pathByte == '-' || pathByte == '.' || pathByte == '_' || pathByte == '~' || pathByte == '/') {
+      encoded.add(pathByte);
     } else {
       // Percent-encode this byte
       encoded.add('%');
       char high, low;
-      byteToHex(byte, high, low);
+      byteToHex(pathByte, high, low);
       encoded.add(high);
       encoded.add(low);
     }
