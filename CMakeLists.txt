@@ -25,12 +25,17 @@ add_executable(${exe_name}
     src/stdin_reader.cpp
     src/stdout_writer.cpp
     src/lsp_message_handler.cpp
+    src/json_rpc.cpp
+    src/lsp_json.cpp
     src/lsp_types.cpp
     src/project_config.cpp
     src/utils.cpp
     src/linked_compiler.cpp
     src/compilation_manager.cpp
     src/symbol_resolver.cpp
+    src/symbol_index.cpp
+    src/diagnostic_publisher.cpp
+    src/workspace_state.cpp
 )
 
 if(NOT EXISTS "${CAPNP_SOURCE_DIR}/src/capnp/compiler/compiler.h")
@@ -55,22 +60,80 @@ target_link_libraries(${exe_name} PRIVATE
 
 if(CAPNP_LS_BUILD_TESTS)
     enable_testing()
+    add_executable(capnp-ls-lsp-types-test
+        tests/lsp_types_test.cpp
+        src/lsp_types.cpp
+    )
+    target_link_libraries(capnp-ls-lsp-types-test PRIVATE
+        kj
+    )
+    target_include_directories(capnp-ls-lsp-types-test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    add_test(NAME lsp-types COMMAND capnp-ls-lsp-types-test)
+    add_executable(capnp-ls-json-rpc-test
+        tests/json_rpc_test.cpp
+        src/json_rpc.cpp
+        src/lsp_types.cpp
+    )
+    target_link_libraries(capnp-ls-json-rpc-test PRIVATE
+        capnp-json
+        capnp
+        kj
+    )
+    target_include_directories(capnp-ls-json-rpc-test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    add_test(NAME json-rpc COMMAND capnp-ls-json-rpc-test)
+    add_executable(capnp-ls-lsp-json-test
+        tests/lsp_json_test.cpp
+        src/lsp_json.cpp
+        src/lsp_types.cpp
+        src/utils.cpp
+    )
+    target_link_libraries(capnp-ls-lsp-json-test PRIVATE
+        capnp-json
+        capnp
+        kj
+    )
+    target_include_directories(capnp-ls-lsp-json-test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    add_test(NAME lsp-json COMMAND capnp-ls-lsp-json-test)
+    add_executable(capnp-ls-utils-test
+        tests/utils_test.cpp
+        src/utils.cpp
+    )
+    target_link_libraries(capnp-ls-utils-test PRIVATE
+        kj
+    )
+    target_include_directories(capnp-ls-utils-test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    add_test(NAME utils COMMAND capnp-ls-utils-test)
     add_executable(capnp-ls-linked-compiler-test
         tests/linked_compiler_test.cpp
         src/project_config.cpp
         src/linked_compiler.cpp
         src/symbol_resolver.cpp
+        src/symbol_index.cpp
+        src/lsp_types.cpp
     )
     add_executable(capnp-ls-initialize-config-test
         tests/initialize_config_test.cpp
         src/stdout_writer.cpp
         src/lsp_message_handler.cpp
+        src/json_rpc.cpp
+        src/lsp_json.cpp
         src/lsp_types.cpp
         src/project_config.cpp
         src/utils.cpp
         src/linked_compiler.cpp
         src/compilation_manager.cpp
         src/symbol_resolver.cpp
+        src/symbol_index.cpp
+        src/diagnostic_publisher.cpp
+        src/workspace_state.cpp
     )
     target_sources(capnp-ls-initialize-config-test PRIVATE
         "${CAPNP_SOURCE_DIR}/src/capnp/compiler/module-loader.c++"

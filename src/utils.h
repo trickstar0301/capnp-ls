@@ -9,4 +9,5 @@
 
 namespace capnp_ls {
 kj::String uriToPath(const kj::StringPtr uri);
+kj::String pathToUri(const kj::StringPtr path);
 }

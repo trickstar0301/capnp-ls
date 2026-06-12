@@ -111,13 +111,8 @@ struct Diagnostic {
   kj::String source; // "capnp-compiler"
 };
 
-struct CompileError {
-  kj::String file;
-  uint32_t rowStart;
-  uint32_t rowEnd;
-  uint32_t colStart;
-  uint32_t colEnd;
-  kj::String type;
-  kj::String message;
-};
+// Range geometry utilities
+bool containsPosition(const Range &range, uint32_t line, uint32_t character);
+bool isTighterRange(const Range &candidate, const Range &best);
+
 } // namespace capnp_ls

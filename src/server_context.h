@@ -12,21 +12,15 @@ namespace capnp_ls {
 
 class ServerContext {
 public:
-  ServerContext(
-      kj::AsyncIoContext &context,
-      kj::Own<kj::PromiseFulfiller<void>> fulfiller)
-      : ioContext(context), exitFulfiller(kj::mv(fulfiller)) {}
+  ServerContext(kj::Own<kj::PromiseFulfiller<void>> fulfiller)
+      : exitFulfiller(kj::mv(fulfiller)) {}
 
   void shutdown() {
     KJ_LOG(INFO, "Shutting down server...");
     exitFulfiller->fulfill();
   }
-  kj::AsyncIoContext &getIoContext() {
-    return ioContext;
-  }
 
 private:
-  kj::AsyncIoContext &ioContext;
   kj::Own<kj::PromiseFulfiller<void>> exitFulfiller;
 };
 } // namespace capnp_ls

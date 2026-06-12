@@ -7,6 +7,7 @@
 #include "kj_compat.h"
 #include "log_level.h"
 #include "project_config.h"
+#include "symbol_index.h"
 #include "symbol_resolver.h"
 #include <capnp/schema.capnp.h>
 #include <kj/debug.h>
@@ -69,6 +70,8 @@ bool hasDocumentSymbol(
 } // namespace
 
 int main() {
+  auto filesystem = kj::newDiskFilesystem();
+
   kj::Vector<kj::String> importPaths;
   importPaths.add(kj::heapString("schemas/common"));
 
@@ -109,27 +112,29 @@ int main() {
       invalidLogLevelFailed,
       "project config should reject unknown log levels");
 
-  kj::HashMap<kj::String, kj::Vector<capnp_ls::Diagnostic>> diagnostics;
+  capnp_ls::SymbolIndex index;
 
   auto configuredResult = capnp_ls::LinkedCompiler::compile(
       fixturePath("schemas/company.capnp"),
       CAPNP_LS_TEST_FIXTURE_DIR,
       configuredImportPaths,
-      diagnostics);
+      *filesystem,
+      index.diagnosticMap);
   require(configuredResult.success, "project config import paths should compile");
   require(
-      diagnostics.size() == 0,
+      index.diagnosticMap.size() == 0,
       "project config import paths should not produce diagnostics");
-  diagnostics.clear();
+  index.diagnosticMap.clear();
 
   auto validResult = capnp_ls::LinkedCompiler::compile(
       fixturePath("schemas/company.capnp"),
       CAPNP_LS_TEST_FIXTURE_DIR,
       importPaths,
-      diagnostics);
+      *filesystem,
+      index.diagnosticMap);
 
   require(validResult.success, "valid fixture should compile");
-  require(diagnostics.size() == 0, "valid fixture should not produce diagnostics");
+  require(index.diagnosticMap.size() == 0, "valid fixture should not produce diagnostics");
 
   auto &requestMessage = KJ_ASSERT_NONNULL(validResult.request);
   auto request =
@@ -145,35 +150,27 @@ int main() {
               .size() > 0,
       "request should contain identifier resolutions");
 
-  kj::HashMap<kj::String, kj::HashMap<capnp_ls::Range, uint64_t>>
-      positionToNodeIdMap;
-  kj::HashMap<uint64_t, kj::Own<capnp_ls::Location>> nodeLocationMap;
-  kj::HashMap<uint64_t, kj::Own<capnp_ls::SymbolMetadata>> nodeMetadataMap;
-  kj::HashMap<uint64_t, kj::Vector<capnp_ls::Location>> referenceMap;
-  kj::HashMap<kj::String, kj::Vector<capnp_ls::DocumentSymbol>>
-      documentSymbolMap;
   auto resolveResult = capnp_ls::SymbolResolver::resolve(
-      request, positionToNodeIdMap, nodeLocationMap, nodeMetadataMap,
-      referenceMap, documentSymbolMap, importPaths, CAPNP_LS_TEST_FIXTURE_DIR);
+      request, *filesystem, index, importPaths, CAPNP_LS_TEST_FIXTURE_DIR);
   require(resolveResult == 0, "symbol resolver should resolve valid fixture");
 
   auto companyPath = fixturePath("schemas/company.capnp");
   auto commonPath = fixturePath("schemas/common/common.capnp");
-  auto &rangeMap = KJ_ASSERT_NONNULL(positionToNodeIdMap.find(companyPath));
+  auto &rangeMap = KJ_ASSERT_NONNULL(index.fileSourceInfoMap.find(companyPath));
 
   auto employeeId = resolveAt(rangeMap, 15, 29);
-  auto &location = KJ_ASSERT_NONNULL(nodeLocationMap.find(employeeId));
+  auto &location = KJ_ASSERT_NONNULL(index.nodeLocationMap.find(employeeId));
   require(location->uri == companyPath, "definition should resolve in company.capnp");
   require(location->range.start.line == 18, "definition should start at line 18");
   require(location->range.start.character == 3, "definition should start at character 3");
-  auto &employeeMetadata = KJ_ASSERT_NONNULL(nodeMetadataMap.find(employeeId));
+  auto &employeeMetadata = KJ_ASSERT_NONNULL(index.nodeMetadataMap.find(employeeId));
   require(employeeMetadata->name == "Employee", "hover metadata should use short symbol name");
   require(employeeMetadata->detail == "struct", "hover metadata should include symbol kind");
-  auto &employeeReferences = KJ_ASSERT_NONNULL(referenceMap.find(employeeId));
+  auto &employeeReferences = KJ_ASSERT_NONNULL(index.referenceMap.find(employeeId));
   require(
       employeeReferences.size() >= 4,
       "references should include declaration and type usages");
-  auto &companySymbols = KJ_ASSERT_NONNULL(documentSymbolMap.find(companyPath));
+  auto &companySymbols = KJ_ASSERT_NONNULL(index.documentSymbolMap.find(companyPath));
   require(
       hasDocumentSymbol(companySymbols, "EmployeeManagement", 11),
       "document symbols should include interfaces");
@@ -186,7 +183,7 @@ int main() {
 
   auto qualifiedImportId = resolveAt(rangeMap, 21, 22);
   auto &qualifiedImportLocation =
-      KJ_ASSERT_NONNULL(nodeLocationMap.find(qualifiedImportId));
+      KJ_ASSERT_NONNULL(index.nodeLocationMap.find(qualifiedImportId));
   require(
       qualifiedImportLocation->uri == commonPath,
       "qualified imported definition should resolve in common.capnp");
@@ -196,7 +193,7 @@ int main() {
 
   auto inlineImportId = resolveAt(rangeMap, 22, 40);
   auto &inlineImportLocation =
-      KJ_ASSERT_NONNULL(nodeLocationMap.find(inlineImportId));
+      KJ_ASSERT_NONNULL(index.nodeLocationMap.find(inlineImportId));
   require(
       inlineImportLocation->uri == commonPath,
       "inline imported definition should resolve in common.capnp");
@@ -208,57 +205,56 @@ int main() {
   // duplicate document symbols or references, including for imported files.
   auto companySymbolCount = companySymbols.size();
   auto commonSymbolCount =
-      KJ_ASSERT_NONNULL(documentSymbolMap.find(commonPath)).size();
+      KJ_ASSERT_NONNULL(index.documentSymbolMap.find(commonPath)).size();
   auto employeeReferenceCount = employeeReferences.size();
   auto qualifiedImportReferenceCount =
-      KJ_ASSERT_NONNULL(referenceMap.find(qualifiedImportId)).size();
+      KJ_ASSERT_NONNULL(index.referenceMap.find(qualifiedImportId)).size();
   resolveResult = capnp_ls::SymbolResolver::resolve(
-      request, positionToNodeIdMap, nodeLocationMap, nodeMetadataMap,
-      referenceMap, documentSymbolMap, importPaths, CAPNP_LS_TEST_FIXTURE_DIR);
+      request, *filesystem, index, importPaths, CAPNP_LS_TEST_FIXTURE_DIR);
   require(resolveResult == 0, "symbol resolver should resolve fixture again");
   require(
-      KJ_ASSERT_NONNULL(documentSymbolMap.find(companyPath)).size() ==
+      KJ_ASSERT_NONNULL(index.documentSymbolMap.find(companyPath)).size() ==
           companySymbolCount,
       "recompile should not duplicate requested file document symbols");
   require(
-      KJ_ASSERT_NONNULL(documentSymbolMap.find(commonPath)).size() ==
+      KJ_ASSERT_NONNULL(index.documentSymbolMap.find(commonPath)).size() ==
           commonSymbolCount,
       "recompile should not duplicate imported file document symbols");
   require(
-      KJ_ASSERT_NONNULL(referenceMap.find(employeeId)).size() ==
+      KJ_ASSERT_NONNULL(index.referenceMap.find(employeeId)).size() ==
           employeeReferenceCount,
       "recompile should not duplicate requested file references");
   require(
-      KJ_ASSERT_NONNULL(referenceMap.find(qualifiedImportId)).size() ==
+      KJ_ASSERT_NONNULL(index.referenceMap.find(qualifiedImportId)).size() ==
           qualifiedImportReferenceCount,
       "recompile should not duplicate imported file references");
 
   kj::Vector<kj::String> noImportPaths;
-  diagnostics.clear();
+  index.diagnosticMap.clear();
   auto standardImportResult = capnp_ls::LinkedCompiler::compile(
       fixturePath("schemas/standard_import.capnp"),
       CAPNP_LS_TEST_FIXTURE_DIR,
       noImportPaths,
-      diagnostics);
+      *filesystem,
+      index.diagnosticMap);
   require(
       standardImportResult.success,
       "standard Cap'n Proto imports should compile without user import paths");
   require(
-      diagnostics.size() == 0,
+      index.diagnosticMap.size() == 0,
       "standard Cap'n Proto imports should not produce diagnostics");
 
   auto &standardImportRequestMessage =
       KJ_ASSERT_NONNULL(standardImportResult.request);
   auto standardImportRequest =
       standardImportRequestMessage->getRoot<capnp::schema::CodeGeneratorRequest>();
-  positionToNodeIdMap.clear();
-  nodeLocationMap.clear();
-  nodeMetadataMap.clear();
-  referenceMap.clear();
-  documentSymbolMap.clear();
+  index.fileSourceInfoMap.clear();
+  index.nodeLocationMap.clear();
+  index.nodeMetadataMap.clear();
+  index.referenceMap.clear();
+  index.documentSymbolMap.clear();
   resolveResult = capnp_ls::SymbolResolver::resolve(
-      standardImportRequest, positionToNodeIdMap, nodeLocationMap,
-      nodeMetadataMap, referenceMap, documentSymbolMap, noImportPaths,
+      standardImportRequest, *filesystem, index, noImportPaths,
       CAPNP_LS_TEST_FIXTURE_DIR);
   require(
       resolveResult == 0,
@@ -267,24 +263,52 @@ int main() {
   kj::Vector<kj::String> badImportPaths;
   badImportPaths.add(kj::heapString("schemas/common"));
   badImportPaths.add(kj::heapString("schemas/does-not-exist"));
-  diagnostics.clear();
+  index.diagnosticMap.clear();
   auto badImportPathResult = capnp_ls::LinkedCompiler::compile(
       fixturePath("schemas/company.capnp"),
       CAPNP_LS_TEST_FIXTURE_DIR,
       badImportPaths,
-      diagnostics);
+      *filesystem,
+      index.diagnosticMap);
   require(!badImportPathResult.success, "missing import path should fail");
-  requireDiagnosticContaining(diagnostics, "Import path does not exist");
+  requireDiagnosticContaining(index.diagnosticMap, "Import path does not exist");
 
-  diagnostics.clear();
+  index.diagnosticMap.clear();
   auto invalidResult = capnp_ls::LinkedCompiler::compile(
       fixturePath("schemas/error_company.capnp"),
       CAPNP_LS_TEST_FIXTURE_DIR,
       importPaths,
-      diagnostics);
+      *filesystem,
+      index.diagnosticMap);
 
   require(!invalidResult.success, "invalid fixture should fail");
-  require(diagnostics.size() > 0, "invalid fixture should produce diagnostics");
+  require(index.diagnosticMap.size() > 0, "invalid fixture should produce diagnostics");
+
+  // Verify diagnostic position convention: internal 1-based.
+  // error_company.capnp line 10: "const myCompanyId :UInt3 = 123;"
+  // Compiler reports 0-based 9/19–9/24; we expect 1-based 10/20–10/25 internally.
+  auto errorFilePath = fixturePath("schemas/error_company.capnp");
+  CAPNP_LS_IF_SOME (fileDiagnostics, index.diagnosticMap.find(errorFilePath)) {
+    bool foundUint3Error = false;
+    for (const auto &diagnostic : *fileDiagnostics) {
+      if (diagnostic.message.startsWith("Not defined: UInt3")) {
+        foundUint3Error = true;
+        require(
+            diagnostic.range.start.line == 10,
+            "diagnostic should have 1-based line 10");
+        require(
+            diagnostic.range.start.character == 20,
+            "diagnostic should have 1-based character 20");
+        require(
+            diagnostic.range.end.line == 10,
+            "diagnostic should have 1-based end line 10");
+        require(
+            diagnostic.range.end.character == 25,
+            "diagnostic should have 1-based end character 25");
+      }
+    }
+    require(foundUint3Error, "should find UInt3 diagnostic");
+  }
 
   return 0;
 }

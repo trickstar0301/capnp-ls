@@ -6,11 +6,14 @@
 #pragma once
 
 #include "compilation_manager.h"
+#include "diagnostic_publisher.h"
 #include "log_level.h"
 #include "lsp_types.h"
 #include "server_context.h"
 #include "stdout_writer.h"
+#include "symbol_index.h"
 #include "utils.h"
+#include "workspace_state.h"
 #include <capnp/compat/json.h>
 #include <kj/async.h>
 #include <kj/debug.h>
@@ -31,27 +34,23 @@ public:
     return handleInitialize(params, initializeResponseBuilder);
   }
   size_t testImportPathCount() const {
-    return importPaths.size();
+    return workspace.importPaths.size();
   }
   kj::StringPtr testImportPath(size_t index) const {
-    return importPaths[index];
+    return workspace.importPaths[index];
   }
   kj::StringPtr testWorkspacePath() const {
-    return workspacePath;
+    return workspace.workspacePath;
   }
   bool testReloadProjectConfig() {
-    return reloadProjectConfig();
+    return workspace.reloadProjectConfig(index);
   }
   LogLevel testLogLevel() const {
-    return currentLogLevel;
+    return workspace.currentLogLevel;
   }
 #endif
 
 private:
-  kj::Maybe<kj::String>
-  buildResponseString(const double id, const capnp::JsonValue::Reader &result);
-  kj::Maybe<kj::String>
-  buildErrorResponseString(const double id, int code, kj::StringPtr message);
   kj::Promise<void> handleShutdown();
   kj::Promise<void> handleDefinition(
       const capnp::JsonValue::Reader &params,
@@ -76,32 +75,16 @@ private:
   kj::Promise<void> handleFormatting(
       const capnp::JsonValue::Reader &params,
       capnp::MallocMessageBuilder &formattingResponseBuilder);
-  kj::Promise<void> publishDiagnostics(
-      kj::StringPtr fileName,
-      kj::Vector<kj::String> previousDiagnosticFiles);
-  kj::Promise<void> publishDiagnosticsForFile(
-      kj::StringPtr fileName,
-      const kj::Vector<Diagnostic> *diagnostics);
-  bool reloadProjectConfig();
-  void clearCompilationState();
-  bool isProjectConfigPath(kj::StringPtr path);
   kj::Maybe<uint64_t>
   findNodeIdAtPosition(kj::StringPtr path, uint32_t line, uint32_t character);
+  kj::Promise<void> dispatch(LspMethod method, const capnp::JsonValue::Reader &params, capnp::MallocMessageBuilder &response);
 
-  kj::HashMap<kj::String, kj::HashMap<Range, uint64_t>> fileSourceInfoMap;
-  kj::HashMap<uint64_t, kj::Own<Location>> nodeLocationMap;
-  kj::HashMap<uint64_t, kj::Own<SymbolMetadata>> nodeMetadataMap;
-  kj::HashMap<uint64_t, kj::Vector<Location>> referenceMap;
-  kj::HashMap<kj::String, kj::Vector<DocumentSymbol>> documentSymbolMap;
-  kj::HashMap<kj::String, kj::Vector<Diagnostic>> diagnosticMap;
-  kj::String workspacePath;
-  kj::Vector<kj::String> importPaths;
-  bool importPathsConfiguredByInitialization = false;
-  LogLevel defaultLogLevel = LogLevel::WARNING;
-  LogLevel currentLogLevel = defaultLogLevel;
+  SymbolIndex index;
+  WorkspaceState workspace;
   ServerContext &context;
   kj::Own<CompilationManager> compilationManager;
   StdoutWriter &stdoutWriter;
+  DiagnosticPublisher diagnosticPublisher;
   kj::Promise<void> compileCapnpFile(kj::StringPtr uri);
 };
 } // namespace capnp_ls

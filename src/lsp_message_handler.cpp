@@ -4,9 +4,11 @@
 // See LICENSE file in the project root for full license information.
 
 #include "lsp_message_handler.h"
+#include "json_rpc.h"
 #include "kj_compat.h"
+#include "lsp_json.h"
 #include "lsp_types.h"
-#include "project_config.h"
+#include "workspace_state.h"
 #include <capnp/compat/json.h>
 #include <capnp/message.h>
 #include <iostream>
@@ -16,107 +18,38 @@
 #include <unistd.h>
 
 namespace capnp_ls {
+
 namespace {
 
-struct TextDocumentPosition {
-  kj::String uri;
-  kj::String path;
-  uint32_t line = 0;
-  uint32_t character = 0;
+struct JsonRpcRequest {
+  kj::StringPtr method;
+  kj::Maybe<double> id;
+  capnp::JsonValue::Reader params;
 };
 
-void setPosition(capnp::JsonValue::Builder value, const Position &position) {
-  auto obj = value.initObject(2);
-  obj[0].setName("line");
-  obj[0].getValue().setNumber(position.line - 1);
-  obj[1].setName("character");
-  obj[1].getValue().setNumber(position.character - 1);
-}
+JsonRpcRequest parseJsonRpcEnvelope(capnp::JsonValue::Reader root) {
+  auto obj = root.getObject();
+  kj::StringPtr method;
+  kj::Maybe<double> maybeRequestId;
+  capnp::JsonValue::Reader params;
 
-void setRange(capnp::JsonValue::Builder value, const Range &range) {
-  auto rangeObj = value.initObject(2);
-  rangeObj[0].setName("start");
-  setPosition(rangeObj[0].getValue(), range.start);
-  rangeObj[1].setName("end");
-  setPosition(rangeObj[1].getValue(), range.end);
-}
-
-void setLocation(capnp::JsonValue::Builder value, const Location &location) {
-  auto locationObj = value.initObject(2);
-  locationObj[0].setName("uri");
-  locationObj[0].getValue().setString(kj::str("file://", location.uri));
-  locationObj[1].setName("range");
-  setRange(locationObj[1].getValue(), location.range);
-}
-
-TextDocumentPosition parseTextDocumentPosition(
-    const capnp::JsonValue::Reader &params) {
-  auto paramsObj = params.getObject();
-  TextDocumentPosition parsed;
-
-  for (auto field : paramsObj) {
-    if (field.getName() == "textDocument") {
-      auto textDocument = field.getValue().getObject();
-      for (auto docField : textDocument) {
-        if (docField.getName() == "uri") {
-          parsed.uri = kj::heapString(docField.getValue().getString());
-          parsed.path = uriToPath(parsed.uri);
-        }
+  for (auto field : obj) {
+    kj::StringPtr name = field.getName();
+    if (name == LSP_METHOD) {
+      method = field.getValue().getString();
+    } else if (name == LSP_ID) {
+      if (field.getValue().isNumber()) {
+        maybeRequestId = field.getValue().getNumber();
+      } else if (field.getValue().isNull()) {
+      } else {
+        KJ_LOG(ERROR, "Invalid ID type", field.getValue().which());
       }
-    } else if (field.getName() == "position") {
-      auto position = field.getValue().getObject();
-      for (auto posField : position) {
-        if (posField.getName() == "line") {
-          parsed.line = posField.getValue().getNumber() + 1;
-        } else if (posField.getName() == "character") {
-          parsed.character = posField.getValue().getNumber() + 1;
-        }
-      }
+    } else if (name == LSP_PARAMS) {
+      params = field.getValue();
     }
   }
 
-  return parsed;
-}
-
-kj::String parseTextDocumentPath(const capnp::JsonValue::Reader &params) {
-  auto paramsObj = params.getObject();
-  for (auto field : paramsObj) {
-    if (field.getName() == "textDocument") {
-      auto textDocument = field.getValue().getObject();
-      for (auto docField : textDocument) {
-        if (docField.getName() == "uri") {
-          return uriToPath(docField.getValue().getString());
-        }
-      }
-    }
-  }
-  return kj::heapString("");
-}
-
-bool containsPosition(const Range &range, uint32_t line, uint32_t character) {
-  if (line < range.start.line || line > range.end.line) {
-    return false;
-  }
-  if (line == range.start.line && character < range.start.character) {
-    return false;
-  }
-  if (line == range.end.line && character > range.end.character) {
-    return false;
-  }
-  return true;
-}
-
-bool isTighterRange(const Range &candidate, const Range &best) {
-  uint32_t candidateLineSpan = candidate.end.line - candidate.start.line;
-  uint32_t bestLineSpan = best.end.line - best.start.line;
-  if (candidateLineSpan != bestLineSpan) {
-    return candidateLineSpan < bestLineSpan;
-  }
-  int64_t candidateCharSpan = static_cast<int64_t>(candidate.end.character) -
-      static_cast<int64_t>(candidate.start.character);
-  int64_t bestCharSpan = static_cast<int64_t>(best.end.character) -
-      static_cast<int64_t>(best.start.character);
-  return candidateCharSpan < bestCharSpan;
+  return JsonRpcRequest{method, maybeRequestId, params};
 }
 
 } // namespace
@@ -124,8 +57,9 @@ bool isTighterRange(const Range &candidate, const Range &best) {
 LspMessageHandler::LspMessageHandler(
     ServerContext &serverContext,
     StdoutWriter &stdoutWriter)
-    : context(serverContext), stdoutWriter(stdoutWriter) {
-  compilationManager = kj::heap<CompilationManager>(context.getIoContext());
+    : context(serverContext), stdoutWriter(stdoutWriter),
+      diagnosticPublisher(stdoutWriter) {
+  compilationManager = kj::heap<CompilationManager>();
 }
 
 kj::Promise<void>
@@ -150,73 +84,16 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
 
       codec.decodeRaw(jsonContent, root);
 
-      auto obj = root.getObject();
-      kj::StringPtr method;
-      kj::Maybe<double> maybeRequestId;
-      capnp::JsonValue::Reader params;
-
-      for (auto field : obj) {
-        kj::StringPtr name = field.getName();
-        if (name == LSP_METHOD) {
-          method = field.getValue().getString();
-        } else if (name == LSP_ID) {
-          if (field.getValue().isNumber()) {
-            maybeRequestId = field.getValue().getNumber();
-          } else if (field.getValue().isNull()) {
-          } else {
-            KJ_LOG(ERROR, "Invalid ID type", field.getValue().which());
-          }
-        } else if (name == LSP_PARAMS) {
-          params = field.getValue();
-        }
-      }
+      auto rpcRequest = parseJsonRpcEnvelope(root.asReader());
 
       auto responseMessageBuilder = kj::heap<capnp::MallocMessageBuilder>();
       kj::Promise<void> promise = kj::READY_NOW;
 
-      CAPNP_LS_IF_SOME (methodEnum, tryParseLspMethod(method)) {
-        switch (*methodEnum) {
-        case LspMethod::INITIALIZE:
-          promise = handleInitialize(params, *responseMessageBuilder);
-          break;
-        case LspMethod::SHUTDOWN:
-          promise = handleShutdown();
-          break;
-        case LspMethod::DEFINITION:
-          promise = handleDefinition(params, *responseMessageBuilder);
-          break;
-        case LspMethod::HOVER:
-          promise = handleHover(params, *responseMessageBuilder);
-          break;
-        case LspMethod::REFERENCES:
-          promise = handleReferences(params, *responseMessageBuilder);
-          break;
-        case LspMethod::DOCUMENT_SYMBOL:
-          promise = handleDocumentSymbol(params, *responseMessageBuilder);
-          break;
-        case LspMethod::DID_OPEN:
-          promise = handleDidOpenTextDocument(params);
-          break;
-        case LspMethod::DID_SAVE:
-          promise = handleDidSave(params);
-          break;
-        case LspMethod::DID_CHANGE_WATCHED_FILES:
-          promise = handleDidChangeWatchedFiles(params);
-          break;
-        case LspMethod::FORMATTING:
-          promise = handleFormatting(params, *responseMessageBuilder);
-          break;
-        case LspMethod::INITIALIZED:
-        case LspMethod::SET_TRACE:
-        case LspMethod::CANCEL_REQUEST:
-        case LspMethod::DID_CHANGE:
-        case LspMethod::DID_CLOSE:
-          // KJ_LOG(INFO, "Ignoring method", method.cStr());
-          break;
-        }
+      CAPNP_LS_IF_SOME (methodEnum, tryParseLspMethod(rpcRequest.method)) {
+        promise = dispatch(*methodEnum, rpcRequest.params, *responseMessageBuilder);
       } else {
-        KJ_LOG(INFO, "Unsupported method", method.cStr());
-        CAPNP_LS_IF_SOME (requestId, maybeRequestId) {
+        KJ_LOG(INFO, "Unsupported method", rpcRequest.method.cStr());
+        CAPNP_LS_IF_SOME (requestId, rpcRequest.id) {
           CAPNP_LS_IF_SOME (
               responseString,
               buildErrorResponseString(*requestId, -32601, "Method not found")) {
@@ -226,7 +103,7 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
         }
       }
 
-      CAPNP_LS_IF_SOME (requestId, maybeRequestId) {
+      CAPNP_LS_IF_SOME (requestId, rpcRequest.id) {
         return promise.then(
             [this,
              id = *requestId,
@@ -251,176 +128,25 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
   return kj::Promise<void>(kj::READY_NOW);
 }
 
-void LspMessageHandler::clearCompilationState() {
-  fileSourceInfoMap.clear();
-  nodeLocationMap.clear();
-  nodeMetadataMap.clear();
-  referenceMap.clear();
-  documentSymbolMap.clear();
-  diagnosticMap.clear();
-}
-
-bool LspMessageHandler::isProjectConfigPath(kj::StringPtr path) {
-  return path.endsWith(kj::str("/", PROJECT_CONFIG_FILE)) ||
-      path == PROJECT_CONFIG_FILE;
-}
-
-bool LspMessageHandler::reloadProjectConfig() {
-  if (workspacePath.size() == 0) {
-    KJ_LOG(INFO, "Skipping project config reload because workspace path is not set");
-    return false;
-  }
-
-  ProjectConfig loadedConfig;
-  if (loadProjectConfig(workspacePath, loadedConfig)) {
-    CAPNP_LS_IF_SOME (logLevel, loadedConfig.logLevel) {
-      currentLogLevel = *logLevel;
-    } else {
-      currentLogLevel = defaultLogLevel;
-    }
-    applyLogLevel(currentLogLevel);
-
-    if (!importPathsConfiguredByInitialization) {
-      importPaths.clear();
-      for (auto &path : loadedConfig.importPaths) {
-        importPaths.add(kj::mv(path));
-      }
-    } else {
-      KJ_LOG(INFO, "Skipping project config import paths because initialization options configured import paths");
-    }
-
-    clearCompilationState();
-    KJ_LOG(INFO, "Project config reloaded");
-    return true;
-  }
-
-  if (!projectConfigExists(workspacePath)) {
-    currentLogLevel = defaultLogLevel;
-    applyLogLevel(currentLogLevel);
-    if (!importPathsConfiguredByInitialization) {
-      importPaths.clear();
-    }
-    clearCompilationState();
-    KJ_LOG(INFO, "Project config removed; defaults restored");
-    return true;
-  }
-
-  KJ_LOG(ERROR, "Keeping previous project config because reload failed");
-  return false;
-}
-
-kj::Maybe<kj::String> LspMessageHandler::buildResponseString(
-    const double id,
-    const capnp::JsonValue::Reader &result) {
-  try {
-    capnp::MallocMessageBuilder messageBuilder;
-    auto root = messageBuilder.initRoot<capnp::JsonValue>();
-    auto obj = root.initObject(3);
-
-    obj[0].setName(LSP_JSONRPC);
-    obj[0].getValue().setString(LSP_JSON_RPC_VERSION);
-
-    obj[1].setName(LSP_ID);
-    obj[1].getValue().setNumber(id);
-
-    obj[2].setName(LSP_RESULT);
-    if (!result.isObject() || result.getObject().size() == 0) {
-      obj[2].getValue().setNull();
-    } else {
-      auto resultValue = result.getObject()[0].getValue();
-      if (resultValue.isObject()) {
-        obj[2].getValue().setObject(resultValue.getObject());
-      } else if (resultValue.isArray()) {
-        obj[2].getValue().setArray(resultValue.getArray());
-      } else if (resultValue.isString()) {
-        obj[2].getValue().setString(resultValue.getString());
-      } else if (resultValue.isNumber()) {
-        obj[2].getValue().setNumber(resultValue.getNumber());
-      } else if (resultValue.isBoolean()) {
-        obj[2].getValue().setBoolean(resultValue.getBoolean());
-      } else {
-        obj[2].getValue().setNull();
-      }
-    }
-
-    capnp::JsonCodec codec;
-    kj::String responseStr =
-        codec.encodeRaw(messageBuilder.getRoot<capnp::JsonValue>());
-    // KJ_LOG(INFO, "Encoded response", responseStr.cStr());
-
-    return kj::str(
-        LSP_CONTENT_LENGTH_HEADER,
-        responseStr.size(),
-        LSP_HEADER_DELIMITER,
-        responseStr);
-  } catch (kj::Exception &e) {
-    KJ_LOG(ERROR, "Error building response string", e.getDescription());
-    return CAPNP_LS_NONE;
-  }
-}
-
-kj::Maybe<kj::String> LspMessageHandler::buildErrorResponseString(
-    const double id,
-    int code,
-    kj::StringPtr message) {
-  try {
-    capnp::MallocMessageBuilder messageBuilder;
-    auto root = messageBuilder.initRoot<capnp::JsonValue>();
-    auto obj = root.initObject(3);
-
-    obj[0].setName(LSP_JSONRPC);
-    obj[0].getValue().setString(LSP_JSON_RPC_VERSION);
-
-    obj[1].setName(LSP_ID);
-    obj[1].getValue().setNumber(id);
-
-    obj[2].setName(LSP_ERROR);
-    auto error = obj[2].getValue().initObject(2);
-
-    error[0].setName("code");
-    error[0].getValue().setNumber(code);
-
-    error[1].setName("message");
-    error[1].getValue().setString(message);
-
-    capnp::JsonCodec codec;
-    kj::String responseStr =
-        codec.encodeRaw(messageBuilder.getRoot<capnp::JsonValue>());
-
-    return kj::str(
-        LSP_CONTENT_LENGTH_HEADER,
-        responseStr.size(),
-        LSP_HEADER_DELIMITER,
-        responseStr);
-  } catch (kj::Exception &e) {
-    KJ_LOG(ERROR, "Error building error response string", e.getDescription());
-    return CAPNP_LS_NONE;
-  }
-}
-
 kj::Promise<void> LspMessageHandler::compileCapnpFile(kj::StringPtr uri) {
   auto strippedUri = uriToPath(uri);
   if (strippedUri.endsWith(".capnp")) {
     kj::Vector<kj::String> previousDiagnosticFiles;
-    for (const auto &[diagnosticUri, _] : diagnosticMap) {
+    for (const auto &[diagnosticUri, _] : index.diagnosticMap) {
       previousDiagnosticFiles.add(kj::heapString(diagnosticUri));
     }
 
     return compilationManager
         ->compile(CompilationManager::CompileParams(
-            importPaths,
+            workspace.importPaths,
             strippedUri,
-            workspacePath,
-            fileSourceInfoMap,
-            nodeLocationMap,
-            nodeMetadataMap,
-            referenceMap,
-            documentSymbolMap,
-            diagnosticMap))
+            workspace.workspacePath,
+            index))
         .then([this,
                strippedUri = kj::mv(strippedUri),
                previousDiagnosticFiles = kj::mv(previousDiagnosticFiles)]() mutable {
-          return publishDiagnostics(
+          return diagnosticPublisher.publishDiagnostics(
+              index.diagnosticMap,
               strippedUri,
               kj::mv(previousDiagnosticFiles));
         });
@@ -428,124 +154,35 @@ kj::Promise<void> LspMessageHandler::compileCapnpFile(kj::StringPtr uri) {
   return kj::READY_NOW;
 }
 
-kj::Promise<void>
-LspMessageHandler::publishDiagnostics(
-    kj::StringPtr fileName,
-    kj::Vector<kj::String> previousDiagnosticFiles) {
-  KJ_LOG(INFO, "Publishing diagnostics");
-
-  bool publishedCurrentFile = false;
-  for (const auto &[uri, diagnostics] : diagnosticMap) {
-    if (uri == fileName) {
-      publishedCurrentFile = true;
-    }
-    (void)publishDiagnosticsForFile(uri, &diagnostics);
+kj::Promise<void> LspMessageHandler::dispatch(LspMethod method, const capnp::JsonValue::Reader &params, capnp::MallocMessageBuilder &response) {
+  switch (method) {
+  case LspMethod::INITIALIZE:
+    return handleInitialize(params, response);
+  case LspMethod::SHUTDOWN:
+    return handleShutdown();
+  case LspMethod::DEFINITION:
+    return handleDefinition(params, response);
+  case LspMethod::HOVER:
+    return handleHover(params, response);
+  case LspMethod::REFERENCES:
+    return handleReferences(params, response);
+  case LspMethod::DOCUMENT_SYMBOL:
+    return handleDocumentSymbol(params, response);
+  case LspMethod::DID_OPEN:
+    return handleDidOpenTextDocument(params);
+  case LspMethod::DID_SAVE:
+    return handleDidSave(params);
+  case LspMethod::DID_CHANGE_WATCHED_FILES:
+    return handleDidChangeWatchedFiles(params);
+  case LspMethod::FORMATTING:
+    return handleFormatting(params, response);
+  case LspMethod::INITIALIZED:
+  case LspMethod::SET_TRACE:
+  case LspMethod::CANCEL_REQUEST:
+  case LspMethod::DID_CHANGE:
+  case LspMethod::DID_CLOSE:
+    break;
   }
-
-  if (!publishedCurrentFile) {
-    (void)publishDiagnosticsForFile(fileName, nullptr);
-  }
-
-  for (auto &previousFile : previousDiagnosticFiles) {
-    bool stillHasDiagnostics = false;
-    CAPNP_LS_IF_SOME (diagnostics, diagnosticMap.find(previousFile)) {
-      (void)diagnostics;
-      stillHasDiagnostics = true;
-    }
-    if (previousFile != fileName && !stillHasDiagnostics) {
-      (void)publishDiagnosticsForFile(previousFile, nullptr);
-    }
-  }
-
-  return kj::READY_NOW;
-}
-
-kj::Promise<void> LspMessageHandler::publishDiagnosticsForFile(
-    kj::StringPtr fileName,
-    const kj::Vector<Diagnostic> *diagnostics) {
-  try {
-    capnp::MallocMessageBuilder messageBuilder;
-    auto root = messageBuilder.initRoot<capnp::JsonValue>();
-    auto notificationObj = root.initObject(3);
-
-    // Set jsonrpc version
-    notificationObj[0].setName(LSP_JSONRPC);
-    notificationObj[0].getValue().setString(LSP_JSON_RPC_VERSION);
-
-    // Set method
-    notificationObj[1].setName(LSP_METHOD);
-    notificationObj[1].getValue().setString("textDocument/publishDiagnostics");
-
-    // Set params
-    notificationObj[2].setName(LSP_PARAMS);
-    auto params = notificationObj[2].getValue().initObject(2);
-
-    // Set URI
-    params[0].setName("uri");
-    // Ensure fileName is relative to workspacePath
-    kj::StringPtr relativeFileName = fileName;
-    if (fileName.startsWith(workspacePath)) {
-      relativeFileName = fileName.slice(
-          workspacePath.size() + 1); // +1 for the trailing slash
-    }
-    kj::String fullUri =
-        kj::str("file://", workspacePath, "/", relativeFileName);
-    params[0].getValue().setString(fullUri);
-
-    // Set diagnostics array
-    params[1].setName("diagnostics");
-    auto diagnosticsSize = diagnostics == nullptr ? 0 : diagnostics->size();
-    auto diagnosticsArray = params[1].getValue().initArray(diagnosticsSize);
-
-    for (size_t i = 0; i < diagnosticsSize; i++) {
-      const auto &diagnostic = (*diagnostics)[i];
-      auto diagnosticObj = diagnosticsArray[i].initObject(3);
-
-      // Set severity
-      diagnosticObj[0].setName("severity");
-      diagnosticObj[0].getValue().setNumber(1); // Error = 1
-
-      // Set message
-      diagnosticObj[1].setName("message");
-      diagnosticObj[1].getValue().setString(diagnostic.message);
-
-      // Set range
-      diagnosticObj[2].setName("range");
-      auto rangeObj = diagnosticObj[2].getValue().initObject(2);
-
-      // Start position
-      auto startObj = rangeObj[0];
-      startObj.setName("start");
-      auto start = startObj.getValue().initObject(2);
-      start[0].setName("line");
-      start[0].getValue().setNumber(diagnostic.range.start.line);
-      start[1].setName("character");
-      start[1].getValue().setNumber(diagnostic.range.start.character);
-
-      // End position
-      auto endObj = rangeObj[1];
-      endObj.setName("end");
-      auto end = endObj.getValue().initObject(2);
-      end[0].setName("line");
-      end[0].getValue().setNumber(diagnostic.range.end.line);
-      end[1].setName("character");
-      end[1].getValue().setNumber(diagnostic.range.end.character);
-    }
-
-    // Encode and send the notification
-    capnp::JsonCodec codec;
-    kj::String notificationStr = codec.encodeRaw(root);
-    kj::String message = kj::str(
-        LSP_CONTENT_LENGTH_HEADER,
-        notificationStr.size(),
-        LSP_HEADER_DELIMITER,
-        notificationStr);
-
-    (void)stdoutWriter.write(message);
-  } catch (kj::Exception &e) {
-    KJ_LOG(ERROR, "Error publishing diagnostics", e.getDescription());
-  }
-
   return kj::READY_NOW;
 }
 
@@ -559,28 +196,7 @@ kj::Maybe<uint64_t> LspMessageHandler::findNodeIdAtPosition(
     kj::StringPtr path,
     uint32_t line,
     uint32_t character) {
-  CAPNP_LS_IF_SOME (rangeMap, fileSourceInfoMap.find(path)) {
-    for (const auto &[range, id] : *rangeMap) {
-      if (containsPosition(range, line, character)) {
-        return id;
-      }
-    }
-  }
-
-  // Fall back to declaration ranges, picking the most deeply nested one.
-  kj::Maybe<uint64_t> bestId = CAPNP_LS_NONE;
-  const Range *bestRange = nullptr;
-  for (const auto &[id, location] : nodeLocationMap) {
-    if (location->uri != path ||
-        !containsPosition(location->range, line, character)) {
-      continue;
-    }
-    if (bestRange == nullptr || isTighterRange(location->range, *bestRange)) {
-      bestId = id;
-      bestRange = &location->range;
-    }
-  }
-  return bestId;
+  return index.findNodeIdAtPosition(path, line, character);
 }
 
 kj::Promise<void> LspMessageHandler::handleDefinition(
@@ -599,7 +215,7 @@ kj::Promise<void> LspMessageHandler::handleDefinition(
         findNodeIdAtPosition(position.path, position.line, position.character);
 
     CAPNP_LS_IF_SOME (id, maybeId) {
-      CAPNP_LS_IF_SOME (location, nodeLocationMap.find(*id)) {
+      CAPNP_LS_IF_SOME (location, index.nodeLocationMap.find(*id)) {
         setLocation(resultField.getValue(), **location);
         return kj::READY_NOW;
       }
@@ -628,7 +244,7 @@ kj::Promise<void> LspMessageHandler::handleHover(
         findNodeIdAtPosition(position.path, position.line, position.character);
 
     CAPNP_LS_IF_SOME (id, maybeId) {
-      CAPNP_LS_IF_SOME (metadata, nodeMetadataMap.find(*id)) {
+      CAPNP_LS_IF_SOME (metadata, index.nodeMetadataMap.find(*id)) {
         auto hoverObj = resultField.getValue().initObject(1);
         hoverObj[0].setName("contents");
         auto contents = hoverObj[0].getValue().initObject(2);
@@ -688,9 +304,9 @@ kj::Promise<void> LspMessageHandler::handleReferences(
         findNodeIdAtPosition(position.path, position.line, position.character);
 
     CAPNP_LS_IF_SOME (id, maybeId) {
-      CAPNP_LS_IF_SOME (references, referenceMap.find(*id)) {
+      CAPNP_LS_IF_SOME (references, index.referenceMap.find(*id)) {
         const Location *declaration = nullptr;
-        CAPNP_LS_IF_SOME (declarationLocation, nodeLocationMap.find(*id)) {
+        CAPNP_LS_IF_SOME (declarationLocation, index.nodeLocationMap.find(*id)) {
           declaration = declarationLocation->get();
         }
 
@@ -738,7 +354,7 @@ kj::Promise<void> LspMessageHandler::handleDocumentSymbol(
 
   try {
     auto path = parseTextDocumentPath(params);
-    CAPNP_LS_IF_SOME (symbols, documentSymbolMap.find(path)) {
+    CAPNP_LS_IF_SOME (symbols, index.documentSymbolMap.find(path)) {
       auto array = resultField.getValue().initArray(symbols->size());
       for (size_t i = 0; i < symbols->size(); ++i) {
         const auto &symbol = (*symbols)[i];
@@ -783,7 +399,7 @@ kj::Promise<void> LspMessageHandler::handleDidChangeWatchedFiles(
 
               auto path = uriToPath(uri);
               if (isProjectConfigPath(path)) {
-                reloadProjectConfig();
+                workspace.reloadProjectConfig(index);
                 return kj::READY_NOW;
               }
 
@@ -845,21 +461,21 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
           for (auto folderField : firstFolder) {
             if (folderField.getName() == "uri") {
               auto uri = kj::heapString(folderField.getValue().getString());
-              workspacePath = uriToPath(uri);
-              KJ_LOG(INFO, "Workspace path set to", workspacePath);
+              workspace.workspacePath = uriToPath(uri);
+              KJ_LOG(INFO, "Workspace path set to", workspace.workspacePath);
             }
           }
           }
         }
-      } else if (field.getName() == "rootUri" && workspacePath.size() == 0) {
+      } else if (field.getName() == "rootUri" && workspace.workspacePath.size() == 0) {
         if (!field.getValue().isNull()) {
-          workspacePath = uriToPath(field.getValue().getString());
-          KJ_LOG(INFO, "Workspace path set from rootUri", workspacePath);
+          workspace.workspacePath = uriToPath(field.getValue().getString());
+          KJ_LOG(INFO, "Workspace path set from rootUri", workspace.workspacePath);
         }
-      } else if (field.getName() == "rootPath" && workspacePath.size() == 0) {
+      } else if (field.getName() == "rootPath" && workspace.workspacePath.size() == 0) {
         if (!field.getValue().isNull()) {
-          workspacePath = kj::heapString(kj::StringPtr(field.getValue().getString()));
-          KJ_LOG(INFO, "Workspace path set from rootPath", workspacePath);
+          workspace.workspacePath = kj::heapString(kj::StringPtr(field.getValue().getString()));
+          KJ_LOG(INFO, "Workspace path set from rootPath", workspace.workspacePath);
         }
       } else if (field.getName() == "initializationOptions") {
         auto initOptions = field.getValue().getObject();
@@ -870,9 +486,9 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
               if (configField.getName() == "importPaths") {
                 auto paths = configField.getValue().getArray();
                 for (auto path : paths) {
-                  importPaths.add(kj::heapString(path.getString()));
+                  workspace.importPaths.add(kj::heapString(path.getString()));
                 }
-                importPathsConfiguredByInitialization = true;
+                workspace.importPathsConfiguredByInitialization = true;
                 KJ_LOG(INFO, "Import paths configured");
               }
             }
@@ -880,7 +496,7 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
         }
       }
     }
-    reloadProjectConfig();
+    workspace.reloadProjectConfig(index);
   } catch (kj::Exception &e) {
     KJ_LOG(ERROR, "Error processing initialize params", e.getDescription());
   }
@@ -894,7 +510,7 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
   auto capsField = resultValue[0];
   capsField.setName("capabilities");
 
-  auto capabilities = capsField.getValue().initObject(6);
+  auto capabilities = capsField.getValue().initObject(5);
 
   // Set text document sync capability
   auto syncField = capabilities[0];
@@ -918,20 +534,15 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
   defField.setName("definitionProvider");
   defField.getValue().setBoolean(true);
 
-  // Set workspace/didChangeWatchedFiles capability
-  auto watchedFilesField = capabilities[2];
-  watchedFilesField.setName("workspace/didChangeWatchedFiles");
-  watchedFilesField.getValue().setBoolean(true);
-
-  auto hoverField = capabilities[3];
+  auto hoverField = capabilities[2];
   hoverField.setName("hoverProvider");
   hoverField.getValue().setBoolean(true);
 
-  auto referencesField = capabilities[4];
+  auto referencesField = capabilities[3];
   referencesField.setName("referencesProvider");
   referencesField.getValue().setBoolean(true);
 
-  auto documentSymbolField = capabilities[5];
+  auto documentSymbolField = capabilities[4];
   documentSymbolField.setName("documentSymbolProvider");
   documentSymbolField.getValue().setBoolean(true);
 
@@ -984,7 +595,7 @@ kj::Promise<void> LspMessageHandler::handleFormatting(
       }
     }
     KJ_LOG(ERROR, "Formatting capability is not implemented yet");
-    // TODO: Call CompilationManager::format
+    // TODO: implement formatting
   } catch (kj::Exception &e) {
     KJ_LOG(
         ERROR,

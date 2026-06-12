@@ -21,7 +21,7 @@ int run() {
   kj::AsyncIoContext ioContext = kj::setupAsyncIo();
 
   auto paf = kj::newPromiseAndFulfiller<void>();
-  ServerContext context(ioContext, kj::mv(paf.fulfiller));
+  ServerContext context(kj::mv(paf.fulfiller));
 
   kj::UnixEventPort::captureSignal(SIGINT);
   kj::UnixEventPort::captureSignal(SIGTERM);
