@@ -510,7 +510,7 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
   auto capsField = resultValue[0];
   capsField.setName("capabilities");
 
-  auto capabilities = capsField.getValue().initObject(6);
+  auto capabilities = capsField.getValue().initObject(5);
 
   // Set text document sync capability
   auto syncField = capabilities[0];
@@ -534,20 +534,15 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
   defField.setName("definitionProvider");
   defField.getValue().setBoolean(true);
 
-  // Set workspace/didChangeWatchedFiles capability
-  auto watchedFilesField = capabilities[2];
-  watchedFilesField.setName("workspace/didChangeWatchedFiles");
-  watchedFilesField.getValue().setBoolean(true);
-
-  auto hoverField = capabilities[3];
+  auto hoverField = capabilities[2];
   hoverField.setName("hoverProvider");
   hoverField.getValue().setBoolean(true);
 
-  auto referencesField = capabilities[4];
+  auto referencesField = capabilities[3];
   referencesField.setName("referencesProvider");
   referencesField.getValue().setBoolean(true);
 
-  auto documentSymbolField = capabilities[5];
+  auto documentSymbolField = capabilities[4];
   documentSymbolField.setName("documentSymbolProvider");
   documentSymbolField.getValue().setBoolean(true);
 

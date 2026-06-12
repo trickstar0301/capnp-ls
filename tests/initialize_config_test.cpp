@@ -208,6 +208,9 @@ int main() {
     require(
         hasObjectField(capabilities, "documentSymbolProvider"),
         "initialize should advertise document symbol support");
+    require(
+        !hasObjectField(capabilities, "workspace/didChangeWatchedFiles"),
+        "initialize response should not advertise a non-spec capability key");
   }
 
   {
