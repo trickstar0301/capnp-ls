@@ -75,7 +75,6 @@ private:
   kj::Promise<void> handleFormatting(
       const capnp::JsonValue::Reader &params,
       capnp::MallocMessageBuilder &formattingResponseBuilder);
-  void clearCompilationState();
   kj::Maybe<uint64_t>
   findNodeIdAtPosition(kj::StringPtr path, uint32_t line, uint32_t character);
 

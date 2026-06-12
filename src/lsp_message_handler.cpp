@@ -150,10 +150,6 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
   return kj::Promise<void>(kj::READY_NOW);
 }
 
-void LspMessageHandler::clearCompilationState() {
-  index.clear();
-}
-
 kj::Promise<void> LspMessageHandler::compileCapnpFile(kj::StringPtr uri) {
   auto strippedUri = uriToPath(uri);
   if (strippedUri.endsWith(".capnp")) {
