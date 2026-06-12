@@ -19,6 +19,20 @@ void require(bool condition, kj::StringPtr message) {
   }
 }
 
+bool contains(kj::StringPtr haystack, kj::StringPtr needle) {
+  if (needle.size() > haystack.size()) {
+    return false;
+  }
+
+  for (size_t i = 0; i <= haystack.size() - needle.size(); i++) {
+    if (haystack.slice(i, i + needle.size()) == needle) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 } // namespace
 
 int main() {
@@ -43,12 +57,12 @@ int main() {
 
       // Verify it contains the delimiter
       require(
-          responseStr->find("\r\n\r\n") != CAPNP_LS_NONE,
+          contains(*responseStr, "\r\n\r\n"),
           "response should contain CRLF delimiter");
 
       // Verify it contains the string result
       require(
-          responseStr->find("\"result\":\"test-string\"") != CAPNP_LS_NONE,
+          contains(*responseStr, "\"result\":\"test-string\""),
           "response should contain the string result");
 
       KJ_LOG(INFO, "Test (a) passed: string result response");
@@ -74,12 +88,12 @@ int main() {
 
       // Verify it contains the delimiter
       require(
-          responseStr->find("\r\n\r\n") != CAPNP_LS_NONE,
+          contains(*responseStr, "\r\n\r\n"),
           "response should contain CRLF delimiter");
 
       // Verify result is null (not an empty object)
       require(
-          responseStr->find("\"result\":null") != CAPNP_LS_NONE,
+          contains(*responseStr, "\"result\":null"),
           "response with empty object result should serialize as null");
 
       KJ_LOG(INFO, "Test (b) passed: empty object result -> null");
@@ -101,17 +115,17 @@ int main() {
 
       // Verify it contains the delimiter
       require(
-          errorStr->find("\r\n\r\n") != CAPNP_LS_NONE,
+          contains(*errorStr, "\r\n\r\n"),
           "error response should contain CRLF delimiter");
 
       // Verify it contains error code
       require(
-          errorStr->find("\"code\":-32600") != CAPNP_LS_NONE,
+          contains(*errorStr, "\"code\":-32600"),
           "error response should contain error code");
 
       // Verify it contains error message
       require(
-          errorStr->find("\"message\":\"Invalid Request\"") != CAPNP_LS_NONE,
+          contains(*errorStr, "\"message\":\"Invalid Request\""),
           "error response should contain error message");
 
       KJ_LOG(INFO, "Test (c) passed: error response with correct framing");
