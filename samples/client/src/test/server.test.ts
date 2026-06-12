@@ -99,4 +99,74 @@ suite('Cap\'n Proto Language Server Test Suite', () => {
         assert.strictEqual(definitions[0].range.start.line, 17, 'Definition should be at line 18 (0-indexed)');
         assert.strictEqual(definitions[0].range.start.character, 2, 'Definition should start at character 3');
     });
+
+    test('Hover Provider', async () => {
+        const workspaceFolder = vscode.workspace.workspaceFolders![0];
+        const uri = vscode.Uri.file(path.join(workspaceFolder.uri.fsPath, 'schemas/company.capnp'));
+        document = await vscode.workspace.openTextDocument(uri);
+        await vscode.window.showTextDocument(document);
+
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        const hovers = await vscode.commands.executeCommand<vscode.Hover[]>(
+            'vscode.executeHoverProvider',
+            document.uri,
+            new vscode.Position(14, 28)
+        );
+
+        assert.ok(hovers?.length > 0, 'No hover found');
+        const markdown = hovers[0].contents
+            .map(content => typeof content === 'string' ? content : content.value)
+            .join('\n');
+        assert.ok(markdown.includes('struct Employee'), 'Hover should include symbol metadata');
+    });
+
+    test('Document Symbol Provider', async () => {
+        const workspaceFolder = vscode.workspace.workspaceFolders![0];
+        const uri = vscode.Uri.file(path.join(workspaceFolder.uri.fsPath, 'schemas/company.capnp'));
+        document = await vscode.workspace.openTextDocument(uri);
+        await vscode.window.showTextDocument(document);
+
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+            'vscode.executeDocumentSymbolProvider',
+            document.uri
+        );
+
+        assert.ok(symbols?.length > 0, 'No document symbols found');
+        assert.ok(
+            symbols.some(symbol => symbol.name === 'EmployeeManagement'),
+            'Document symbols should include the interface'
+        );
+        assert.ok(
+            symbols.some(symbol => symbol.name === 'Employee'),
+            'Document symbols should include the nested struct'
+        );
+        assert.ok(
+            symbols.some(symbol => symbol.name === 'addEmployee'),
+            'Document symbols should include methods'
+        );
+    });
+
+    test('Reference Provider', async () => {
+        const workspaceFolder = vscode.workspace.workspaceFolders![0];
+        const uri = vscode.Uri.file(path.join(workspaceFolder.uri.fsPath, 'schemas/company.capnp'));
+        document = await vscode.workspace.openTextDocument(uri);
+        await vscode.window.showTextDocument(document);
+
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        const references = await vscode.commands.executeCommand<vscode.Location[]>(
+            'vscode.executeReferenceProvider',
+            document.uri,
+            new vscode.Position(14, 28)
+        );
+
+        assert.ok(references?.length > 1, 'References should include declaration and usages');
+        assert.ok(
+            references.some(reference => reference.range.start.line === 17),
+            'References should include the declaration'
+        );
+    });
 });

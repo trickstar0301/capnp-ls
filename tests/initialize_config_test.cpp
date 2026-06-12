@@ -140,6 +140,29 @@ capnp::JsonValue::Reader getObjectField(
   KJ_FAIL_REQUIRE("missing field", fieldName);
 }
 
+bool arrayHasObjectWithStringField(
+    const capnp::JsonValue::Reader &value,
+    kj::StringPtr fieldName,
+    kj::StringPtr expected) {
+  if (!value.isArray()) {
+    return false;
+  }
+
+  for (auto item : value.getArray()) {
+    if (!item.isObject()) {
+      continue;
+    }
+    for (auto field : item.getObject()) {
+      if (field.getName() == fieldName && field.getValue().isString() &&
+          field.getValue().getString() == expected) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 } // namespace
 
 int main() {
@@ -176,6 +199,15 @@ int main() {
     require(
         !hasObjectField(capabilities, "completionProvider"),
         "initialize should not advertise completion without a completion handler");
+    require(
+        hasObjectField(capabilities, "hoverProvider"),
+        "initialize should advertise hover support");
+    require(
+        hasObjectField(capabilities, "referencesProvider"),
+        "initialize should advertise references support");
+    require(
+        hasObjectField(capabilities, "documentSymbolProvider"),
+        "initialize should advertise document symbol support");
   }
 
   {
@@ -333,6 +365,64 @@ struct Person {
         captured.output.find("Constant names must be qualified") ==
             std::string::npos,
         "fixed schema should not republish the previous diagnostic");
+
+    captured.output.clear();
+    handler
+        .handleMessage(lspMessage(kj::str(
+            R"({"jsonrpc":"2.0","id":7,"method":"textDocument/documentSymbol","params":{"textDocument":{"uri":"file://)",
+            schemaPathString.c_str(),
+            R"("}}})")))
+        .wait(io.waitScope);
+    capnp::MallocMessageBuilder documentSymbolResponse;
+    decodeJson(
+        responseJson(
+            kj::StringPtr(captured.output.data(), captured.output.size())),
+        documentSymbolResponse);
+    auto documentSymbolRoot =
+        documentSymbolResponse.getRoot<capnp::JsonValue>().asReader();
+    auto documentSymbolResult = getObjectField(documentSymbolRoot, "result");
+    require(
+        arrayHasObjectWithStringField(documentSymbolResult, "name", "Person"),
+        "documentSymbol should return compiled document symbols as an array result");
+
+    captured.output.clear();
+    handler
+        .handleMessage(lspMessage(kj::str(
+            R"({"jsonrpc":"2.0","id":8,"method":"textDocument/hover","params":{"textDocument":{"uri":"file://)",
+            schemaPathString.c_str(),
+            R"("},"position":{"line":1,"character":8}}})")))
+        .wait(io.waitScope);
+    capnp::MallocMessageBuilder hoverResponse;
+    decodeJson(
+        responseJson(
+            kj::StringPtr(captured.output.data(), captured.output.size())),
+        hoverResponse);
+    auto hoverRoot = hoverResponse.getRoot<capnp::JsonValue>().asReader();
+    auto hoverResult = getObjectField(hoverRoot, "result");
+    auto hoverContents = getObjectField(hoverResult, "contents");
+    auto hoverValue = getObjectField(hoverContents, "value");
+    require(
+        std::string(hoverValue.getString().cStr()).find("const defaultName") !=
+            std::string::npos,
+        "hover should return symbol metadata");
+
+    captured.output.clear();
+    handler
+        .handleMessage(lspMessage(kj::str(
+            R"({"jsonrpc":"2.0","id":9,"method":"textDocument/references","params":{"textDocument":{"uri":"file://)",
+            schemaPathString.c_str(),
+            R"("},"position":{"line":1,"character":8},"context":{"includeDeclaration":true}}})")))
+        .wait(io.waitScope);
+    capnp::MallocMessageBuilder referencesResponse;
+    decodeJson(
+        responseJson(
+            kj::StringPtr(captured.output.data(), captured.output.size())),
+        referencesResponse);
+    auto referencesRoot = referencesResponse.getRoot<capnp::JsonValue>().asReader();
+    auto referencesResult = getObjectField(referencesRoot, "result");
+    require(
+        referencesResult.isArray() && referencesResult.getArray().size() > 0,
+        "references should return locations as an array result");
   }
 
   {

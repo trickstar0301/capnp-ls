@@ -16,6 +16,110 @@
 #include <unistd.h>
 
 namespace capnp_ls {
+namespace {
+
+struct TextDocumentPosition {
+  kj::String uri;
+  kj::String path;
+  uint32_t line = 0;
+  uint32_t character = 0;
+};
+
+void setPosition(capnp::JsonValue::Builder value, const Position &position) {
+  auto obj = value.initObject(2);
+  obj[0].setName("line");
+  obj[0].getValue().setNumber(position.line - 1);
+  obj[1].setName("character");
+  obj[1].getValue().setNumber(position.character - 1);
+}
+
+void setRange(capnp::JsonValue::Builder value, const Range &range) {
+  auto rangeObj = value.initObject(2);
+  rangeObj[0].setName("start");
+  setPosition(rangeObj[0].getValue(), range.start);
+  rangeObj[1].setName("end");
+  setPosition(rangeObj[1].getValue(), range.end);
+}
+
+void setLocation(capnp::JsonValue::Builder value, const Location &location) {
+  auto locationObj = value.initObject(2);
+  locationObj[0].setName("uri");
+  locationObj[0].getValue().setString(kj::str("file://", location.uri));
+  locationObj[1].setName("range");
+  setRange(locationObj[1].getValue(), location.range);
+}
+
+TextDocumentPosition parseTextDocumentPosition(
+    const capnp::JsonValue::Reader &params) {
+  auto paramsObj = params.getObject();
+  TextDocumentPosition parsed;
+
+  for (auto field : paramsObj) {
+    if (field.getName() == "textDocument") {
+      auto textDocument = field.getValue().getObject();
+      for (auto docField : textDocument) {
+        if (docField.getName() == "uri") {
+          parsed.uri = kj::heapString(docField.getValue().getString());
+          parsed.path = uriToPath(parsed.uri);
+        }
+      }
+    } else if (field.getName() == "position") {
+      auto position = field.getValue().getObject();
+      for (auto posField : position) {
+        if (posField.getName() == "line") {
+          parsed.line = posField.getValue().getNumber() + 1;
+        } else if (posField.getName() == "character") {
+          parsed.character = posField.getValue().getNumber() + 1;
+        }
+      }
+    }
+  }
+
+  return parsed;
+}
+
+kj::String parseTextDocumentPath(const capnp::JsonValue::Reader &params) {
+  auto paramsObj = params.getObject();
+  for (auto field : paramsObj) {
+    if (field.getName() == "textDocument") {
+      auto textDocument = field.getValue().getObject();
+      for (auto docField : textDocument) {
+        if (docField.getName() == "uri") {
+          return uriToPath(docField.getValue().getString());
+        }
+      }
+    }
+  }
+  return kj::heapString("");
+}
+
+bool containsPosition(const Range &range, uint32_t line, uint32_t character) {
+  if (line < range.start.line || line > range.end.line) {
+    return false;
+  }
+  if (line == range.start.line && character < range.start.character) {
+    return false;
+  }
+  if (line == range.end.line && character > range.end.character) {
+    return false;
+  }
+  return true;
+}
+
+bool isTighterRange(const Range &candidate, const Range &best) {
+  uint32_t candidateLineSpan = candidate.end.line - candidate.start.line;
+  uint32_t bestLineSpan = best.end.line - best.start.line;
+  if (candidateLineSpan != bestLineSpan) {
+    return candidateLineSpan < bestLineSpan;
+  }
+  int64_t candidateCharSpan = static_cast<int64_t>(candidate.end.character) -
+      static_cast<int64_t>(candidate.start.character);
+  int64_t bestCharSpan = static_cast<int64_t>(best.end.character) -
+      static_cast<int64_t>(best.start.character);
+  return candidateCharSpan < bestCharSpan;
+}
+
+} // namespace
 
 LspMessageHandler::LspMessageHandler(
     ServerContext &serverContext,
@@ -81,6 +185,15 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
         case LspMethod::DEFINITION:
           promise = handleDefinition(params, *responseMessageBuilder);
           break;
+        case LspMethod::HOVER:
+          promise = handleHover(params, *responseMessageBuilder);
+          break;
+        case LspMethod::REFERENCES:
+          promise = handleReferences(params, *responseMessageBuilder);
+          break;
+        case LspMethod::DOCUMENT_SYMBOL:
+          promise = handleDocumentSymbol(params, *responseMessageBuilder);
+          break;
         case LspMethod::DID_OPEN:
           promise = handleDidOpenTextDocument(params);
           break;
@@ -141,6 +254,9 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
 void LspMessageHandler::clearCompilationState() {
   fileSourceInfoMap.clear();
   nodeLocationMap.clear();
+  nodeMetadataMap.clear();
+  referenceMap.clear();
+  documentSymbolMap.clear();
   diagnosticMap.clear();
 }
 
@@ -208,11 +324,23 @@ kj::Maybe<kj::String> LspMessageHandler::buildResponseString(
     obj[1].getValue().setNumber(id);
 
     obj[2].setName(LSP_RESULT);
-    if (result.isObject() && result.getObject().size() > 0 &&
-        result.getObject()[0].getValue().isObject()) {
-      obj[2].getValue().setObject(result.getObject()[0].getValue().getObject());
-    } else {
+    if (!result.isObject() || result.getObject().size() == 0) {
       obj[2].getValue().setNull();
+    } else {
+      auto resultValue = result.getObject()[0].getValue();
+      if (resultValue.isObject()) {
+        obj[2].getValue().setObject(resultValue.getObject());
+      } else if (resultValue.isArray()) {
+        obj[2].getValue().setArray(resultValue.getArray());
+      } else if (resultValue.isString()) {
+        obj[2].getValue().setString(resultValue.getString());
+      } else if (resultValue.isNumber()) {
+        obj[2].getValue().setNumber(resultValue.getNumber());
+      } else if (resultValue.isBoolean()) {
+        obj[2].getValue().setBoolean(resultValue.getBoolean());
+      } else {
+        obj[2].getValue().setNull();
+      }
     }
 
     capnp::JsonCodec codec;
@@ -285,6 +413,9 @@ kj::Promise<void> LspMessageHandler::compileCapnpFile(kj::StringPtr uri) {
             workspacePath,
             fileSourceInfoMap,
             nodeLocationMap,
+            nodeMetadataMap,
+            referenceMap,
+            documentSymbolMap,
             diagnosticMap))
         .then([this,
                strippedUri = kj::mv(strippedUri),
@@ -424,6 +555,34 @@ kj::Promise<void> LspMessageHandler::handleShutdown() {
   return kj::READY_NOW;
 }
 
+kj::Maybe<uint64_t> LspMessageHandler::findNodeIdAtPosition(
+    kj::StringPtr path,
+    uint32_t line,
+    uint32_t character) {
+  CAPNP_LS_IF_SOME (rangeMap, fileSourceInfoMap.find(path)) {
+    for (const auto &[range, id] : *rangeMap) {
+      if (containsPosition(range, line, character)) {
+        return id;
+      }
+    }
+  }
+
+  // Fall back to declaration ranges, picking the most deeply nested one.
+  kj::Maybe<uint64_t> bestId = CAPNP_LS_NONE;
+  const Range *bestRange = nullptr;
+  for (const auto &[id, location] : nodeLocationMap) {
+    if (location->uri != path ||
+        !containsPosition(location->range, line, character)) {
+      continue;
+    }
+    if (bestRange == nullptr || isTighterRange(location->range, *bestRange)) {
+      bestId = id;
+      bestRange = &location->range;
+    }
+  }
+  return bestId;
+}
+
 kj::Promise<void> LspMessageHandler::handleDefinition(
     const capnp::JsonValue::Reader &params,
     capnp::MallocMessageBuilder &definitionResponseBuilder) {
@@ -435,109 +594,173 @@ kj::Promise<void> LspMessageHandler::handleDefinition(
   resultField.setName(LSP_RESULT);
 
   try {
-    auto paramsObj = params.getObject();
-    kj::String uri;
-    uint32_t line = 0;
-    uint32_t character = 0;
+    auto position = parseTextDocumentPosition(params);
+    auto maybeId =
+        findNodeIdAtPosition(position.path, position.line, position.character);
 
-    KJ_LOG(INFO, "Parsing parameters");
-
-    for (auto field : paramsObj) {
-      if (field.getName() == "textDocument") {
-        auto textDocument = field.getValue().getObject();
-        for (auto docField : textDocument) {
-          if (docField.getName() == "uri") {
-            uri = kj::heapString(docField.getValue().getString());
-            KJ_LOG(INFO, "Found URI", uri);
-          }
-        }
-      } else if (field.getName() == "position") {
-        auto position = field.getValue().getObject();
-        for (auto posField : position) {
-          if (posField.getName() == "line") {
-            line = posField.getValue().getNumber() + 1;
-            KJ_LOG(INFO, "Found", line);
-          } else if (posField.getName() == "character") {
-            character = posField.getValue().getNumber() + 1;
-            KJ_LOG(INFO, "Found", character);
-          }
-        }
+    CAPNP_LS_IF_SOME (id, maybeId) {
+      CAPNP_LS_IF_SOME (location, nodeLocationMap.find(*id)) {
+        setLocation(resultField.getValue(), **location);
+        return kj::READY_NOW;
       }
     }
-
-    // erase file:// prefix and workspacePath from uri
-    kj::String strippedUri = uriToPath(uri);
-
-    KJ_LOG(
-        INFO,
-        "Definition request params:",
-        strippedUri.cStr(),
-        line,
-        character);
-
-    CAPNP_LS_IF_SOME (rangeMap, fileSourceInfoMap.find(strippedUri)) {
-      for (const auto &[range, id] : *rangeMap) {
-        if (range.start.line <= line && line <= range.end.line &&
-            range.start.character <= character &&
-            character <= range.end.character) {
-
-          KJ_LOG(INFO, "Found range for ", id);
-
-          CAPNP_LS_IF_SOME (location, nodeLocationMap.find(id)) {
-            KJ_LOG(INFO, "Found location");
-
-            auto locationObj = resultField.getValue().initObject(2);
-
-            // Uri
-            auto uriField = locationObj[0];
-            uriField.setName("uri");
-            kj::String fullUri = kj::str("file://", (*location)->uri);
-            uriField.getValue().setString(fullUri);
-
-            // Range
-            auto rangeField = locationObj[1];
-            rangeField.setName("range");
-            auto rangeObj = rangeField.getValue().initObject(2);
-
-            // Start position
-            auto startField = rangeObj[0];
-            startField.setName("start");
-            auto startObj = startField.getValue().initObject(2);
-            startObj[0].setName("line");
-            startObj[0].getValue().setNumber((*location)->range.start.line - 1);
-            startObj[1].setName("character");
-            startObj[1].getValue().setNumber(
-                (*location)->range.start.character - 1);
-
-            auto endField = rangeObj[1];
-            endField.setName("end");
-            auto endObj = endField.getValue().initObject(2);
-            endObj[0].setName("line");
-            endObj[0].getValue().setNumber((*location)->range.end.line - 1);
-            endObj[1].setName("character");
-            endObj[1].getValue().setNumber(
-                (*location)->range.end.character - 1);
-
-            KJ_LOG(INFO, "Response structure complete");
-            return kj::READY_NOW;
-          }
-        }
-      }
-    } else {
-      KJ_LOG(
-          INFO,
-          kj::str(
-              "SourceInfo not found for ",
-              strippedUri,
-              ". The file may still be compiling or compilation may have failed."));
-    }
-
-    resultField.getValue().setNull();
   } catch (kj::Exception &e) {
     KJ_LOG(ERROR, "Error processing definition request", e.getDescription());
-    resultField.getValue().setNull();
   }
 
+  resultField.getValue().setNull();
+  return kj::READY_NOW;
+}
+
+kj::Promise<void> LspMessageHandler::handleHover(
+    const capnp::JsonValue::Reader &params,
+    capnp::MallocMessageBuilder &hoverResponseBuilder) {
+  KJ_LOG(INFO, "Handling hover request");
+
+  auto root = hoverResponseBuilder.initRoot<capnp::JsonValue>();
+  auto resultObj = root.initObject(1);
+  auto resultField = resultObj[0];
+  resultField.setName(LSP_RESULT);
+
+  try {
+    auto position = parseTextDocumentPosition(params);
+    auto maybeId =
+        findNodeIdAtPosition(position.path, position.line, position.character);
+
+    CAPNP_LS_IF_SOME (id, maybeId) {
+      CAPNP_LS_IF_SOME (metadata, nodeMetadataMap.find(*id)) {
+        auto hoverObj = resultField.getValue().initObject(1);
+        hoverObj[0].setName("contents");
+        auto contents = hoverObj[0].getValue().initObject(2);
+        contents[0].setName("kind");
+        contents[0].getValue().setString("markdown");
+        contents[1].setName("value");
+        auto value = (*metadata)->documentation.size() > 0
+            ? kj::str(
+                  "```capnp\n",
+                  (*metadata)->detail,
+                  " ",
+                  (*metadata)->name,
+                  "\n```\n",
+                  (*metadata)->documentation)
+            : kj::str(
+                  "```capnp\n",
+                  (*metadata)->detail,
+                  " ",
+                  (*metadata)->name,
+                  "\n```");
+        contents[1].getValue().setString(value);
+        return kj::READY_NOW;
+      }
+    }
+  } catch (kj::Exception &e) {
+    KJ_LOG(ERROR, "Error processing hover request", e.getDescription());
+  }
+
+  resultField.getValue().setNull();
+  return kj::READY_NOW;
+}
+
+kj::Promise<void> LspMessageHandler::handleReferences(
+    const capnp::JsonValue::Reader &params,
+    capnp::MallocMessageBuilder &referencesResponseBuilder) {
+  KJ_LOG(INFO, "Handling references request");
+
+  auto root = referencesResponseBuilder.initRoot<capnp::JsonValue>();
+  auto resultObj = root.initObject(1);
+  auto resultField = resultObj[0];
+  resultField.setName(LSP_RESULT);
+
+  try {
+    auto position = parseTextDocumentPosition(params);
+    bool includeDeclaration = true;
+    for (auto field : params.getObject()) {
+      if (field.getName() == "context") {
+        for (auto contextField : field.getValue().getObject()) {
+          if (contextField.getName() == "includeDeclaration") {
+            includeDeclaration = contextField.getValue().getBoolean();
+          }
+        }
+      }
+    }
+
+    auto maybeId =
+        findNodeIdAtPosition(position.path, position.line, position.character);
+
+    CAPNP_LS_IF_SOME (id, maybeId) {
+      CAPNP_LS_IF_SOME (references, referenceMap.find(*id)) {
+        const Location *declaration = nullptr;
+        CAPNP_LS_IF_SOME (declarationLocation, nodeLocationMap.find(*id)) {
+          declaration = declarationLocation->get();
+        }
+
+        size_t resultSize = 0;
+        for (const auto &reference : *references) {
+          bool isDeclaration = declaration != nullptr &&
+              declaration->uri == reference.uri &&
+              declaration->range == reference.range;
+          if (includeDeclaration || !isDeclaration) {
+            ++resultSize;
+          }
+        }
+
+        auto array = resultField.getValue().initArray(resultSize);
+        size_t index = 0;
+        for (const auto &reference : *references) {
+          bool isDeclaration = declaration != nullptr &&
+              declaration->uri == reference.uri &&
+              declaration->range == reference.range;
+          if (includeDeclaration || !isDeclaration) {
+            setLocation(array[index], reference);
+            ++index;
+          }
+        }
+        return kj::READY_NOW;
+      }
+    }
+  } catch (kj::Exception &e) {
+    KJ_LOG(ERROR, "Error processing references request", e.getDescription());
+  }
+
+  resultField.getValue().initArray(0);
+  return kj::READY_NOW;
+}
+
+kj::Promise<void> LspMessageHandler::handleDocumentSymbol(
+    const capnp::JsonValue::Reader &params,
+    capnp::MallocMessageBuilder &documentSymbolResponseBuilder) {
+  KJ_LOG(INFO, "Handling documentSymbol request");
+
+  auto root = documentSymbolResponseBuilder.initRoot<capnp::JsonValue>();
+  auto resultObj = root.initObject(1);
+  auto resultField = resultObj[0];
+  resultField.setName(LSP_RESULT);
+
+  try {
+    auto path = parseTextDocumentPath(params);
+    CAPNP_LS_IF_SOME (symbols, documentSymbolMap.find(path)) {
+      auto array = resultField.getValue().initArray(symbols->size());
+      for (size_t i = 0; i < symbols->size(); ++i) {
+        const auto &symbol = (*symbols)[i];
+        auto symbolObj = array[i].initObject(5);
+        symbolObj[0].setName("name");
+        symbolObj[0].getValue().setString(symbol.name);
+        symbolObj[1].setName("detail");
+        symbolObj[1].getValue().setString(symbol.detail);
+        symbolObj[2].setName("kind");
+        symbolObj[2].getValue().setNumber(symbol.kind);
+        symbolObj[3].setName("range");
+        setRange(symbolObj[3].getValue(), symbol.range);
+        symbolObj[4].setName("selectionRange");
+        setRange(symbolObj[4].getValue(), symbol.selectionRange);
+      }
+      return kj::READY_NOW;
+    }
+  } catch (kj::Exception &e) {
+    KJ_LOG(ERROR, "Error processing documentSymbol request", e.getDescription());
+  }
+
+  resultField.getValue().initArray(0);
   return kj::READY_NOW;
 }
 
@@ -671,7 +894,7 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
   auto capsField = resultValue[0];
   capsField.setName("capabilities");
 
-  auto capabilities = capsField.getValue().initObject(3);
+  auto capabilities = capsField.getValue().initObject(6);
 
   // Set text document sync capability
   auto syncField = capabilities[0];
@@ -699,6 +922,18 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
   auto watchedFilesField = capabilities[2];
   watchedFilesField.setName("workspace/didChangeWatchedFiles");
   watchedFilesField.getValue().setBoolean(true);
+
+  auto hoverField = capabilities[3];
+  hoverField.setName("hoverProvider");
+  hoverField.getValue().setBoolean(true);
+
+  auto referencesField = capabilities[4];
+  referencesField.setName("referencesProvider");
+  referencesField.getValue().setBoolean(true);
+
+  auto documentSymbolField = capabilities[5];
+  documentSymbolField.setName("documentSymbolProvider");
+  documentSymbolField.getValue().setBoolean(true);
 
   return kj::READY_NOW;
 }

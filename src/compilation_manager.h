@@ -27,12 +27,18 @@ public:
         kj::StringPtr workingDir,
         kj::HashMap<kj::String, kj::HashMap<Range, uint64_t>> &fileSourceInfoMap,
         kj::HashMap<uint64_t, kj::Own<Location>> &nodeLocationMap,
+        kj::HashMap<uint64_t, kj::Own<SymbolMetadata>> &nodeMetadataMap,
+        kj::HashMap<uint64_t, kj::Vector<Location>> &referenceMap,
+        kj::HashMap<kj::String, kj::Vector<DocumentSymbol>> &documentSymbolMap,
         kj::HashMap<kj::String, kj::Vector<Diagnostic>> &diagnosticMap)
         : importPaths(importPaths),
           fileName(fileName),
           workingDir(workingDir),
           fileSourceInfoMap(fileSourceInfoMap),
           nodeLocationMap(nodeLocationMap),
+          nodeMetadataMap(nodeMetadataMap),
+          referenceMap(referenceMap),
+          documentSymbolMap(documentSymbolMap),
           diagnosticMap(diagnosticMap) {}
 
     const kj::Vector<kj::String> &importPaths;
@@ -40,6 +46,9 @@ public:
     kj::StringPtr workingDir;
     kj::HashMap<kj::String, kj::HashMap<Range, uint64_t>> &fileSourceInfoMap;
     kj::HashMap<uint64_t, kj::Own<Location>> &nodeLocationMap;
+    kj::HashMap<uint64_t, kj::Own<SymbolMetadata>> &nodeMetadataMap;
+    kj::HashMap<uint64_t, kj::Vector<Location>> &referenceMap;
+    kj::HashMap<kj::String, kj::Vector<DocumentSymbol>> &documentSymbolMap;
     kj::HashMap<kj::String, kj::Vector<Diagnostic>> &diagnosticMap;
   };
 

@@ -56,6 +56,15 @@ private:
   kj::Promise<void> handleDefinition(
       const capnp::JsonValue::Reader &params,
       capnp::MallocMessageBuilder &definitionResponseBuilder);
+  kj::Promise<void> handleHover(
+      const capnp::JsonValue::Reader &params,
+      capnp::MallocMessageBuilder &hoverResponseBuilder);
+  kj::Promise<void> handleReferences(
+      const capnp::JsonValue::Reader &params,
+      capnp::MallocMessageBuilder &referencesResponseBuilder);
+  kj::Promise<void> handleDocumentSymbol(
+      const capnp::JsonValue::Reader &params,
+      capnp::MallocMessageBuilder &documentSymbolResponseBuilder);
   kj::Promise<void>
   handleDidChangeWatchedFiles(const capnp::JsonValue::Reader &params);
   kj::Promise<void> handleDidSave(const capnp::JsonValue::Reader &params);
@@ -76,9 +85,14 @@ private:
   bool reloadProjectConfig();
   void clearCompilationState();
   bool isProjectConfigPath(kj::StringPtr path);
+  kj::Maybe<uint64_t>
+  findNodeIdAtPosition(kj::StringPtr path, uint32_t line, uint32_t character);
 
   kj::HashMap<kj::String, kj::HashMap<Range, uint64_t>> fileSourceInfoMap;
   kj::HashMap<uint64_t, kj::Own<Location>> nodeLocationMap;
+  kj::HashMap<uint64_t, kj::Own<SymbolMetadata>> nodeMetadataMap;
+  kj::HashMap<uint64_t, kj::Vector<Location>> referenceMap;
+  kj::HashMap<kj::String, kj::Vector<DocumentSymbol>> documentSymbolMap;
   kj::HashMap<kj::String, kj::Vector<Diagnostic>> diagnosticMap;
   kj::String workspacePath;
   kj::Vector<kj::String> importPaths;

@@ -32,6 +32,9 @@ constexpr const char LSP_ERROR[] = "error";
   MACRO(INITIALIZE, "initialize")                                              \
   MACRO(SHUTDOWN, "shutdown")                                                  \
   MACRO(DEFINITION, "textDocument/definition")                                 \
+  MACRO(HOVER, "textDocument/hover")                                           \
+  MACRO(REFERENCES, "textDocument/references")                                 \
+  MACRO(DOCUMENT_SYMBOL, "textDocument/documentSymbol")                        \
   MACRO(DID_OPEN, "textDocument/didOpen")                                      \
   MACRO(DID_CHANGE_WATCHED_FILES, "workspace/didChangeWatchedFiles")           \
   MACRO(DID_SAVE, "textDocument/didSave")                                      \
@@ -78,6 +81,20 @@ struct Range {
 struct Location {
   kj::String uri;
   Range range;
+};
+
+struct SymbolMetadata {
+  kj::String name;
+  kj::String detail;
+  kj::String documentation;
+};
+
+struct DocumentSymbol {
+  kj::String name;
+  kj::String detail;
+  uint32_t kind;
+  Range range;
+  Range selectionRange;
 };
 
 enum class DiagnosticSeverity {
