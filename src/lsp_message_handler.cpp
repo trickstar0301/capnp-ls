@@ -194,7 +194,7 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
         CAPNP_LS_IF_SOME (requestId, maybeRequestId) {
           CAPNP_LS_IF_SOME (
               responseString,
-              capnp_ls::buildErrorResponseString(*requestId, -32601, "Method not found")) {
+              buildErrorResponseString(*requestId, -32601, "Method not found")) {
             (void)stdoutWriter.write(*responseString);
           }
           return kj::READY_NOW;
@@ -207,7 +207,7 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
              id = *requestId,
              builder = kj::mv(responseMessageBuilder)]() mutable {
               auto response = builder->getRoot<capnp::JsonValue>().asReader();
-              CAPNP_LS_IF_SOME (responseString, capnp_ls::buildResponseString(id, response)) {
+              CAPNP_LS_IF_SOME (responseString, buildResponseString(id, response)) {
                 (void)stdoutWriter.write(*responseString);
               }
               return kj::Promise<void>(kj::READY_NOW);
