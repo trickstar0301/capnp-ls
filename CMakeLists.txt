@@ -55,6 +55,17 @@ target_link_libraries(${exe_name} PRIVATE
 
 if(CAPNP_LS_BUILD_TESTS)
     enable_testing()
+    add_executable(capnp-ls-lsp-types-test
+        tests/lsp_types_test.cpp
+        src/lsp_types.cpp
+    )
+    target_link_libraries(capnp-ls-lsp-types-test PRIVATE
+        kj
+    )
+    target_include_directories(capnp-ls-lsp-types-test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    add_test(NAME lsp-types COMMAND capnp-ls-lsp-types-test)
     add_executable(capnp-ls-linked-compiler-test
         tests/linked_compiler_test.cpp
         src/project_config.cpp

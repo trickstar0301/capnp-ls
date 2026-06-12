@@ -120,4 +120,9 @@ struct CompileError {
   kj::String type;
   kj::String message;
 };
+
+// Range geometry utilities
+bool containsPosition(const Range &range, uint32_t line, uint32_t character);
+bool isTighterRange(const Range &candidate, const Range &best);
+
 } // namespace capnp_ls
