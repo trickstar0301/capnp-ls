@@ -334,6 +334,108 @@ kj::String extractFilePath(
   KJ_FAIL_REQUIRE("File not found", relativeFilePath);
 }
 
+template <typename ResolveFilePath>
+void clearStalePerFileState(
+    capnp::schema::CodeGeneratorRequest::Reader request,
+    SymbolIndex &index,
+    const ResolveFilePath &resolveFilePath,
+    const kj::HashMap<
+        uint64_t,
+        capnp::schema::CodeGeneratorRequest::RequestedFile::FileSourceInfo::
+            Reader> &fileSourceInfoMap) {
+  // Clear stale per-file state before adding anything: node order in the
+  // request is not guaranteed, so clearing while adding could wipe data
+  // that was just added for the same file.
+  for (auto node : request.getNodes()) {
+    if (node.which() == capnp::schema::Node::Which::FILE) {
+      CAPNP_LS_IF_SOME (sourceInfo, fileSourceInfoMap.find(node.getId())) {
+        kj::StringPtr filePath = resolveFilePath(node.getDisplayName());
+        index.fileSourceInfoMap.erase(filePath);
+        index.documentSymbolMap.erase(filePath);
+        // Only requested files lose their references. Imported files keep
+        // theirs: identifier usages inside an imported file are only
+        // re-added when that file is compiled as a requested file.
+        removeReferencesInFile(index.referenceMap, filePath);
+      }
+      continue;
+    }
+    kj::StringPtr displayName = node.getDisplayName();
+    if (displayName.endsWith("$Params") || displayName.endsWith("$Results")) {
+      continue;
+    }
+    // Document symbols for this file are fully re-added below, including
+    // for imported files.
+    index.documentSymbolMap.erase(resolveFilePath(displayName));
+  }
+}
+
+void indexFileNode(
+    capnp::schema::Node::Reader node,
+    SymbolIndex &index,
+    PositionCalculator &positionCalculator,
+    kj::StringPtr filePath,
+    capnp::schema::CodeGeneratorRequest::RequestedFile::FileSourceInfo::Reader
+        sourceInfo) {
+  index.nodeLocationMap.upsert(
+      node.getId(),
+      kj::heap<Location>(Location{
+          kj::str(filePath), Range{Position{1, 1}, Position{1, 1}}}));
+  index.nodeMetadataMap.upsert(
+      node.getId(),
+      kj::heap<SymbolMetadata>(SymbolMetadata{
+          shortDisplayName(node),
+          nodeKindName(node),
+          kj::heapString("")}));
+
+  for (auto identifier : sourceInfo.getIdentifiers()) {
+    Range range{
+        positionCalculator.getPosition(
+            filePath, identifier.getStartByte()),
+        positionCalculator.getPosition(
+            filePath, identifier.getEndByte())};
+    Location location{kj::str(filePath), range};
+    addReference(index.referenceMap, identifier.getTypeId(), filePath, range);
+    auto &rangeMap = index.fileSourceInfoMap.findOrCreate(
+        location.uri,
+        [&]() -> kj::HashMap<kj::String, kj::HashMap<Range, uint64_t>>::Entry {
+          return {kj::mv(location.uri), kj::HashMap<Range, uint64_t>()};
+        });
+    rangeMap.upsert(range, identifier.getTypeId());
+  }
+}
+
+void indexDeclarationNode(
+    capnp::schema::Node::Reader node,
+    SymbolIndex &index,
+    PositionCalculator &positionCalculator,
+    kj::StringPtr filePath,
+    capnp::schema::Node::SourceInfo::Reader sourceInfo) {
+  Range range{
+      positionCalculator.getPosition(filePath, sourceInfo.getStartByte()),
+      positionCalculator.getPosition(filePath, sourceInfo.getEndByte())};
+  index.nodeLocationMap.upsert(
+      node.getId(),
+      kj::heap<Location>(Location{kj::str(filePath), range}));
+  index.nodeMetadataMap.upsert(
+      node.getId(),
+      kj::heap<SymbolMetadata>(SymbolMetadata{
+          shortDisplayName(node),
+          nodeKindName(node),
+          kj::heapString(sourceInfo.getDocComment())}));
+  addReference(index.referenceMap, node.getId(), filePath, range);
+  addDocumentSymbol(
+      index.documentSymbolMap,
+      filePath,
+      DocumentSymbol{
+          shortDisplayName(node),
+          nodeKindName(node),
+          documentSymbolKind(node),
+          range,
+          range});
+  addMemberDocumentSymbols(
+      node, sourceInfo, filePath, index.documentSymbolMap, positionCalculator);
+}
+
 int SymbolResolver::resolve(
     capnp::schema::CodeGeneratorRequest::Reader request,
     SymbolIndex &index,
@@ -384,65 +486,13 @@ int SymbolResolver::resolve(
           });
     };
 
-    // Clear stale per-file state before adding anything: node order in the
-    // request is not guaranteed, so clearing while adding could wipe data
-    // that was just added for the same file.
-    for (auto node : request.getNodes()) {
-      if (node.which() == capnp::schema::Node::Which::FILE) {
-        CAPNP_LS_IF_SOME (sourceInfo, fileSourceInfoMap.find(node.getId())) {
-          kj::StringPtr filePath = resolveFilePath(node.getDisplayName());
-          index.fileSourceInfoMap.erase(filePath);
-          index.documentSymbolMap.erase(filePath);
-          // Only requested files lose their references. Imported files keep
-          // theirs: identifier usages inside an imported file are only
-          // re-added when that file is compiled as a requested file.
-          removeReferencesInFile(index.referenceMap, filePath);
-        }
-        continue;
-      }
-      kj::StringPtr displayName = node.getDisplayName();
-      if (displayName.endsWith("$Params") || displayName.endsWith("$Results")) {
-        continue;
-      }
-      // Document symbols for this file are fully re-added below, including
-      // for imported files.
-      index.documentSymbolMap.erase(resolveFilePath(displayName));
-    }
+    clearStalePerFileState(request, index, resolveFilePath, fileSourceInfoMap);
 
     for (auto node : request.getNodes()) {
       if (node.which() == capnp::schema::Node::Which::FILE) {
         CAPNP_LS_IF_SOME (sourceInfo, fileSourceInfoMap.find(node.getId())) {
           kj::StringPtr filePath = resolveFilePath(node.getDisplayName());
-
-          index.nodeLocationMap.upsert(
-              node.getId(),
-              kj::heap<Location>(Location{
-                  kj::str(filePath), Range{Position{1, 1}, Position{1, 1}}}));
-          index.nodeMetadataMap.upsert(
-              node.getId(),
-              kj::heap<SymbolMetadata>(SymbolMetadata{
-                  shortDisplayName(node),
-                  nodeKindName(node),
-                  kj::heapString("")}));
-
-          for (auto identifier : sourceInfo->getIdentifiers()) {
-            Range range{
-                positionCalculator.getPosition(
-                    filePath, identifier.getStartByte()),
-                positionCalculator.getPosition(
-                    filePath, identifier.getEndByte())};
-            Location location{kj::str(filePath), range};
-            addReference(index.referenceMap, identifier.getTypeId(), filePath, range);
-            auto &rangeMap = index.fileSourceInfoMap.findOrCreate(
-                location.uri,
-                [&]() -> kj::HashMap<kj::String, kj::HashMap<Range, uint64_t>>::
-                          Entry {
-                            return {
-                                kj::mv(location.uri),
-                                kj::HashMap<Range, uint64_t>()};
-                          });
-            rangeMap.upsert(range, identifier.getTypeId());
-          }
+          indexFileNode(node, index, positionCalculator, filePath, *sourceInfo);
         }
         continue;
       }
@@ -455,46 +505,9 @@ int SymbolResolver::resolve(
       kj::StringPtr filePath = resolveFilePath(displayName);
 
       CAPNP_LS_IF_SOME (sourceInfo, sourceInfoMap.find(node.getId())) {
-        Range range{
-            positionCalculator.getPosition(filePath, sourceInfo->getStartByte()),
-            positionCalculator.getPosition(filePath, sourceInfo->getEndByte())};
-        index.nodeLocationMap.upsert(
-            node.getId(),
-            kj::heap<Location>(Location{kj::str(filePath), range}));
-        index.nodeMetadataMap.upsert(
-            node.getId(),
-            kj::heap<SymbolMetadata>(SymbolMetadata{
-                shortDisplayName(node),
-                nodeKindName(node),
-                kj::heapString(sourceInfo->getDocComment())}));
-        addReference(index.referenceMap, node.getId(), filePath, range);
-        addDocumentSymbol(
-            index.documentSymbolMap,
-            filePath,
-            DocumentSymbol{
-                shortDisplayName(node),
-                nodeKindName(node),
-                documentSymbolKind(node),
-                range,
-                range});
-        addMemberDocumentSymbols(
-            node, *sourceInfo, filePath, index.documentSymbolMap, positionCalculator);
+        indexDeclarationNode(node, index, positionCalculator, filePath, *sourceInfo);
       }
     }
-    // KJ_LOG(INFO, "positionToNodeIdMap:");
-    // for (auto &[key, value] : positionToNodeIdMap) {
-    //   KJ_LOG(INFO, key.cStr());
-    //   for (auto &[range, nodeId] : value) {
-    //     KJ_LOG(INFO, nodeId, range.start.line, range.start.character,
-    //            range.end.character);
-    //   }
-    // }
-
-    // KJ_LOG(INFO, "nodeLocationMap:");
-    // for (auto &[key, value] : nodeLocationMap) {
-    //   KJ_LOG(INFO, key, value->uri, value->range.start.line,
-    //          value->range.end.line);
-    // }
   } catch (kj::Exception &e) {
     KJ_LOG(ERROR, "Failed to resolve symbols", e.getDescription());
     return 1;
