@@ -13,6 +13,7 @@
 #include "stdout_writer.h"
 #include "symbol_index.h"
 #include "utils.h"
+#include "workspace_state.h"
 #include <capnp/compat/json.h>
 #include <kj/async.h>
 #include <kj/debug.h>
@@ -33,19 +34,19 @@ public:
     return handleInitialize(params, initializeResponseBuilder);
   }
   size_t testImportPathCount() const {
-    return importPaths.size();
+    return workspace.importPaths.size();
   }
   kj::StringPtr testImportPath(size_t index) const {
-    return importPaths[index];
+    return workspace.importPaths[index];
   }
   kj::StringPtr testWorkspacePath() const {
-    return workspacePath;
+    return workspace.workspacePath;
   }
   bool testReloadProjectConfig() {
-    return reloadProjectConfig();
+    return workspace.reloadProjectConfig(index);
   }
   LogLevel testLogLevel() const {
-    return currentLogLevel;
+    return workspace.currentLogLevel;
   }
 #endif
 
@@ -74,18 +75,12 @@ private:
   kj::Promise<void> handleFormatting(
       const capnp::JsonValue::Reader &params,
       capnp::MallocMessageBuilder &formattingResponseBuilder);
-  bool reloadProjectConfig();
   void clearCompilationState();
-  bool isProjectConfigPath(kj::StringPtr path);
   kj::Maybe<uint64_t>
   findNodeIdAtPosition(kj::StringPtr path, uint32_t line, uint32_t character);
 
   SymbolIndex index;
-  kj::String workspacePath;
-  kj::Vector<kj::String> importPaths;
-  bool importPathsConfiguredByInitialization = false;
-  LogLevel defaultLogLevel = LogLevel::WARNING;
-  LogLevel currentLogLevel = defaultLogLevel;
+  WorkspaceState workspace;
   ServerContext &context;
   kj::Own<CompilationManager> compilationManager;
   StdoutWriter &stdoutWriter;

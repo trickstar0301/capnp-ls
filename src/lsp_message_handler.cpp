@@ -8,7 +8,7 @@
 #include "kj_compat.h"
 #include "lsp_json.h"
 #include "lsp_types.h"
-#include "project_config.h"
+#include "workspace_state.h"
 #include <capnp/compat/json.h>
 #include <capnp/message.h>
 #include <iostream>
@@ -154,55 +154,6 @@ void LspMessageHandler::clearCompilationState() {
   index.clear();
 }
 
-bool LspMessageHandler::isProjectConfigPath(kj::StringPtr path) {
-  return path.endsWith(kj::str("/", PROJECT_CONFIG_FILE)) ||
-      path == PROJECT_CONFIG_FILE;
-}
-
-bool LspMessageHandler::reloadProjectConfig() {
-  if (workspacePath.size() == 0) {
-    KJ_LOG(INFO, "Skipping project config reload because workspace path is not set");
-    return false;
-  }
-
-  ProjectConfig loadedConfig;
-  if (loadProjectConfig(workspacePath, loadedConfig)) {
-    CAPNP_LS_IF_SOME (logLevel, loadedConfig.logLevel) {
-      currentLogLevel = *logLevel;
-    } else {
-      currentLogLevel = defaultLogLevel;
-    }
-    applyLogLevel(currentLogLevel);
-
-    if (!importPathsConfiguredByInitialization) {
-      importPaths.clear();
-      for (auto &path : loadedConfig.importPaths) {
-        importPaths.add(kj::mv(path));
-      }
-    } else {
-      KJ_LOG(INFO, "Skipping project config import paths because initialization options configured import paths");
-    }
-
-    clearCompilationState();
-    KJ_LOG(INFO, "Project config reloaded");
-    return true;
-  }
-
-  if (!projectConfigExists(workspacePath)) {
-    currentLogLevel = defaultLogLevel;
-    applyLogLevel(currentLogLevel);
-    if (!importPathsConfiguredByInitialization) {
-      importPaths.clear();
-    }
-    clearCompilationState();
-    KJ_LOG(INFO, "Project config removed; defaults restored");
-    return true;
-  }
-
-  KJ_LOG(ERROR, "Keeping previous project config because reload failed");
-  return false;
-}
-
 kj::Promise<void> LspMessageHandler::compileCapnpFile(kj::StringPtr uri) {
   auto strippedUri = uriToPath(uri);
   if (strippedUri.endsWith(".capnp")) {
@@ -213,9 +164,9 @@ kj::Promise<void> LspMessageHandler::compileCapnpFile(kj::StringPtr uri) {
 
     return compilationManager
         ->compile(CompilationManager::CompileParams(
-            importPaths,
+            workspace.importPaths,
             strippedUri,
-            workspacePath,
+            workspace.workspacePath,
             index))
         .then([this,
                strippedUri = kj::mv(strippedUri),
@@ -224,7 +175,7 @@ kj::Promise<void> LspMessageHandler::compileCapnpFile(kj::StringPtr uri) {
               index.diagnosticMap,
               strippedUri,
               kj::mv(previousDiagnosticFiles),
-              workspacePath);
+              workspace.workspacePath);
         });
   }
   return kj::READY_NOW;
@@ -444,7 +395,7 @@ kj::Promise<void> LspMessageHandler::handleDidChangeWatchedFiles(
 
               auto path = uriToPath(uri);
               if (isProjectConfigPath(path)) {
-                reloadProjectConfig();
+                workspace.reloadProjectConfig(index);
                 return kj::READY_NOW;
               }
 
@@ -506,21 +457,21 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
           for (auto folderField : firstFolder) {
             if (folderField.getName() == "uri") {
               auto uri = kj::heapString(folderField.getValue().getString());
-              workspacePath = uriToPath(uri);
-              KJ_LOG(INFO, "Workspace path set to", workspacePath);
+              workspace.workspacePath = uriToPath(uri);
+              KJ_LOG(INFO, "Workspace path set to", workspace.workspacePath);
             }
           }
           }
         }
-      } else if (field.getName() == "rootUri" && workspacePath.size() == 0) {
+      } else if (field.getName() == "rootUri" && workspace.workspacePath.size() == 0) {
         if (!field.getValue().isNull()) {
-          workspacePath = uriToPath(field.getValue().getString());
-          KJ_LOG(INFO, "Workspace path set from rootUri", workspacePath);
+          workspace.workspacePath = uriToPath(field.getValue().getString());
+          KJ_LOG(INFO, "Workspace path set from rootUri", workspace.workspacePath);
         }
-      } else if (field.getName() == "rootPath" && workspacePath.size() == 0) {
+      } else if (field.getName() == "rootPath" && workspace.workspacePath.size() == 0) {
         if (!field.getValue().isNull()) {
-          workspacePath = kj::heapString(kj::StringPtr(field.getValue().getString()));
-          KJ_LOG(INFO, "Workspace path set from rootPath", workspacePath);
+          workspace.workspacePath = kj::heapString(kj::StringPtr(field.getValue().getString()));
+          KJ_LOG(INFO, "Workspace path set from rootPath", workspace.workspacePath);
         }
       } else if (field.getName() == "initializationOptions") {
         auto initOptions = field.getValue().getObject();
@@ -531,9 +482,9 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
               if (configField.getName() == "importPaths") {
                 auto paths = configField.getValue().getArray();
                 for (auto path : paths) {
-                  importPaths.add(kj::heapString(path.getString()));
+                  workspace.importPaths.add(kj::heapString(path.getString()));
                 }
-                importPathsConfiguredByInitialization = true;
+                workspace.importPathsConfiguredByInitialization = true;
                 KJ_LOG(INFO, "Import paths configured");
               }
             }
@@ -541,7 +492,7 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
         }
       }
     }
-    reloadProjectConfig();
+    workspace.reloadProjectConfig(index);
   } catch (kj::Exception &e) {
     KJ_LOG(ERROR, "Error processing initialize params", e.getDescription());
   }
