@@ -19,6 +19,41 @@
 
 namespace capnp_ls {
 
+namespace {
+
+struct JsonRpcRequest {
+  kj::StringPtr method;
+  kj::Maybe<double> id;
+  capnp::JsonValue::Reader params;
+};
+
+JsonRpcRequest parseJsonRpcEnvelope(capnp::JsonValue::Reader root) {
+  auto obj = root.getObject();
+  kj::StringPtr method;
+  kj::Maybe<double> maybeRequestId;
+  capnp::JsonValue::Reader params;
+
+  for (auto field : obj) {
+    kj::StringPtr name = field.getName();
+    if (name == LSP_METHOD) {
+      method = field.getValue().getString();
+    } else if (name == LSP_ID) {
+      if (field.getValue().isNumber()) {
+        maybeRequestId = field.getValue().getNumber();
+      } else if (field.getValue().isNull()) {
+      } else {
+        KJ_LOG(ERROR, "Invalid ID type", field.getValue().which());
+      }
+    } else if (name == LSP_PARAMS) {
+      params = field.getValue();
+    }
+  }
+
+  return JsonRpcRequest{method, maybeRequestId, params};
+}
+
+} // namespace
+
 LspMessageHandler::LspMessageHandler(
     ServerContext &serverContext,
     StdoutWriter &stdoutWriter)
@@ -49,73 +84,16 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
 
       codec.decodeRaw(jsonContent, root);
 
-      auto obj = root.getObject();
-      kj::StringPtr method;
-      kj::Maybe<double> maybeRequestId;
-      capnp::JsonValue::Reader params;
-
-      for (auto field : obj) {
-        kj::StringPtr name = field.getName();
-        if (name == LSP_METHOD) {
-          method = field.getValue().getString();
-        } else if (name == LSP_ID) {
-          if (field.getValue().isNumber()) {
-            maybeRequestId = field.getValue().getNumber();
-          } else if (field.getValue().isNull()) {
-          } else {
-            KJ_LOG(ERROR, "Invalid ID type", field.getValue().which());
-          }
-        } else if (name == LSP_PARAMS) {
-          params = field.getValue();
-        }
-      }
+      auto rpcRequest = parseJsonRpcEnvelope(root.asReader());
 
       auto responseMessageBuilder = kj::heap<capnp::MallocMessageBuilder>();
       kj::Promise<void> promise = kj::READY_NOW;
 
-      CAPNP_LS_IF_SOME (methodEnum, tryParseLspMethod(method)) {
-        switch (*methodEnum) {
-        case LspMethod::INITIALIZE:
-          promise = handleInitialize(params, *responseMessageBuilder);
-          break;
-        case LspMethod::SHUTDOWN:
-          promise = handleShutdown();
-          break;
-        case LspMethod::DEFINITION:
-          promise = handleDefinition(params, *responseMessageBuilder);
-          break;
-        case LspMethod::HOVER:
-          promise = handleHover(params, *responseMessageBuilder);
-          break;
-        case LspMethod::REFERENCES:
-          promise = handleReferences(params, *responseMessageBuilder);
-          break;
-        case LspMethod::DOCUMENT_SYMBOL:
-          promise = handleDocumentSymbol(params, *responseMessageBuilder);
-          break;
-        case LspMethod::DID_OPEN:
-          promise = handleDidOpenTextDocument(params);
-          break;
-        case LspMethod::DID_SAVE:
-          promise = handleDidSave(params);
-          break;
-        case LspMethod::DID_CHANGE_WATCHED_FILES:
-          promise = handleDidChangeWatchedFiles(params);
-          break;
-        case LspMethod::FORMATTING:
-          promise = handleFormatting(params, *responseMessageBuilder);
-          break;
-        case LspMethod::INITIALIZED:
-        case LspMethod::SET_TRACE:
-        case LspMethod::CANCEL_REQUEST:
-        case LspMethod::DID_CHANGE:
-        case LspMethod::DID_CLOSE:
-          // KJ_LOG(INFO, "Ignoring method", method.cStr());
-          break;
-        }
+      CAPNP_LS_IF_SOME (methodEnum, tryParseLspMethod(rpcRequest.method)) {
+        promise = dispatch(*methodEnum, rpcRequest.params, *responseMessageBuilder);
       } else {
-        KJ_LOG(INFO, "Unsupported method", method.cStr());
-        CAPNP_LS_IF_SOME (requestId, maybeRequestId) {
+        KJ_LOG(INFO, "Unsupported method", rpcRequest.method.cStr());
+        CAPNP_LS_IF_SOME (requestId, rpcRequest.id) {
           CAPNP_LS_IF_SOME (
               responseString,
               buildErrorResponseString(*requestId, -32601, "Method not found")) {
@@ -125,7 +103,7 @@ LspMessageHandler::handleMessage(kj::Maybe<kj::String> maybeMessage) {
         }
       }
 
-      CAPNP_LS_IF_SOME (requestId, maybeRequestId) {
+      CAPNP_LS_IF_SOME (requestId, rpcRequest.id) {
         return promise.then(
             [this,
              id = *requestId,
@@ -177,6 +155,37 @@ kj::Promise<void> LspMessageHandler::compileCapnpFile(kj::StringPtr uri) {
   return kj::READY_NOW;
 }
 
+kj::Promise<void> LspMessageHandler::dispatch(LspMethod method, const capnp::JsonValue::Reader &params, capnp::MallocMessageBuilder &response) {
+  switch (method) {
+  case LspMethod::INITIALIZE:
+    return handleInitialize(params, response);
+  case LspMethod::SHUTDOWN:
+    return handleShutdown();
+  case LspMethod::DEFINITION:
+    return handleDefinition(params, response);
+  case LspMethod::HOVER:
+    return handleHover(params, response);
+  case LspMethod::REFERENCES:
+    return handleReferences(params, response);
+  case LspMethod::DOCUMENT_SYMBOL:
+    return handleDocumentSymbol(params, response);
+  case LspMethod::DID_OPEN:
+    return handleDidOpenTextDocument(params);
+  case LspMethod::DID_SAVE:
+    return handleDidSave(params);
+  case LspMethod::DID_CHANGE_WATCHED_FILES:
+    return handleDidChangeWatchedFiles(params);
+  case LspMethod::FORMATTING:
+    return handleFormatting(params, response);
+  case LspMethod::INITIALIZED:
+  case LspMethod::SET_TRACE:
+  case LspMethod::CANCEL_REQUEST:
+  case LspMethod::DID_CHANGE:
+  case LspMethod::DID_CLOSE:
+    break;
+  }
+  return kj::READY_NOW;
+}
 
 kj::Promise<void> LspMessageHandler::handleShutdown() {
   KJ_LOG(INFO, "Handling shutdown request");

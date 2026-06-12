@@ -77,6 +77,7 @@ private:
       capnp::MallocMessageBuilder &formattingResponseBuilder);
   kj::Maybe<uint64_t>
   findNodeIdAtPosition(kj::StringPtr path, uint32_t line, uint32_t character);
+  kj::Promise<void> dispatch(LspMethod method, const capnp::JsonValue::Reader &params, capnp::MallocMessageBuilder &response);
 
   SymbolIndex index;
   WorkspaceState workspace;
