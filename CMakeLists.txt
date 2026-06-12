@@ -103,6 +103,8 @@ if(CAPNP_LS_BUILD_TESTS)
         src/project_config.cpp
         src/linked_compiler.cpp
         src/symbol_resolver.cpp
+        src/symbol_index.cpp
+        src/lsp_types.cpp
     )
     add_executable(capnp-ls-initialize-config-test
         tests/initialize_config_test.cpp

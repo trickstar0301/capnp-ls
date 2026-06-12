@@ -6,6 +6,7 @@
 #pragma once
 
 #include "lsp_types.h"
+#include "symbol_index.h"
 #include <capnp/schema.capnp.h>
 #include <kj/map.h>
 
@@ -13,14 +14,7 @@ namespace capnp_ls {
 class SymbolResolver {
 public:
   static int resolve(capnp::schema::CodeGeneratorRequest::Reader request,
-                     kj::HashMap<kj::String, kj::HashMap<Range, uint64_t>>
-                         &positionToNodeIdMap,
-                     kj::HashMap<uint64_t, kj::Own<Location>> &nodeLocationMap,
-                     kj::HashMap<uint64_t, kj::Own<SymbolMetadata>>
-                         &nodeMetadataMap,
-                     kj::HashMap<uint64_t, kj::Vector<Location>> &referenceMap,
-                     kj::HashMap<kj::String, kj::Vector<DocumentSymbol>>
-                         &documentSymbolMap,
+                     SymbolIndex &index,
                      const kj::Vector<kj::String> &importPaths,
                      const kj::StringPtr &workspacePath);
 };

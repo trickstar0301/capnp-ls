@@ -7,6 +7,7 @@
 
 #include "linked_compiler.h"
 #include "lsp_types.h"
+#include "symbol_index.h"
 #include "symbol_resolver.h"
 #include <kj/async-io.h>
 #include <kj/map.h>
@@ -25,31 +26,16 @@ public:
         const kj::Vector<kj::String> &importPaths,
         kj::StringPtr fileName,
         kj::StringPtr workingDir,
-        kj::HashMap<kj::String, kj::HashMap<Range, uint64_t>> &fileSourceInfoMap,
-        kj::HashMap<uint64_t, kj::Own<Location>> &nodeLocationMap,
-        kj::HashMap<uint64_t, kj::Own<SymbolMetadata>> &nodeMetadataMap,
-        kj::HashMap<uint64_t, kj::Vector<Location>> &referenceMap,
-        kj::HashMap<kj::String, kj::Vector<DocumentSymbol>> &documentSymbolMap,
-        kj::HashMap<kj::String, kj::Vector<Diagnostic>> &diagnosticMap)
+        SymbolIndex &index)
         : importPaths(importPaths),
           fileName(fileName),
           workingDir(workingDir),
-          fileSourceInfoMap(fileSourceInfoMap),
-          nodeLocationMap(nodeLocationMap),
-          nodeMetadataMap(nodeMetadataMap),
-          referenceMap(referenceMap),
-          documentSymbolMap(documentSymbolMap),
-          diagnosticMap(diagnosticMap) {}
+          index(index) {}
 
     const kj::Vector<kj::String> &importPaths;
     kj::StringPtr fileName;
     kj::StringPtr workingDir;
-    kj::HashMap<kj::String, kj::HashMap<Range, uint64_t>> &fileSourceInfoMap;
-    kj::HashMap<uint64_t, kj::Own<Location>> &nodeLocationMap;
-    kj::HashMap<uint64_t, kj::Own<SymbolMetadata>> &nodeMetadataMap;
-    kj::HashMap<uint64_t, kj::Vector<Location>> &referenceMap;
-    kj::HashMap<kj::String, kj::Vector<DocumentSymbol>> &documentSymbolMap;
-    kj::HashMap<kj::String, kj::Vector<Diagnostic>> &diagnosticMap;
+    SymbolIndex &index;
   };
 
   struct FormatParams {

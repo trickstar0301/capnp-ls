@@ -215,12 +215,7 @@ kj::Promise<void> LspMessageHandler::compileCapnpFile(kj::StringPtr uri) {
             importPaths,
             strippedUri,
             workspacePath,
-            index.fileSourceInfoMap,
-            index.nodeLocationMap,
-            index.nodeMetadataMap,
-            index.referenceMap,
-            index.documentSymbolMap,
-            index.diagnosticMap))
+            index))
         .then([this,
                strippedUri = kj::mv(strippedUri),
                previousDiagnosticFiles = kj::mv(previousDiagnosticFiles)]() mutable {

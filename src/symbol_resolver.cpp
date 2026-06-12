@@ -336,11 +336,7 @@ kj::String extractFilePath(
 
 int SymbolResolver::resolve(
     capnp::schema::CodeGeneratorRequest::Reader request,
-    kj::HashMap<kj::String, kj::HashMap<Range, uint64_t>> &positionToNodeIdMap,
-    kj::HashMap<uint64_t, kj::Own<Location>> &nodeLocationMap,
-    kj::HashMap<uint64_t, kj::Own<SymbolMetadata>> &nodeMetadataMap,
-    kj::HashMap<uint64_t, kj::Vector<Location>> &referenceMap,
-    kj::HashMap<kj::String, kj::Vector<DocumentSymbol>> &documentSymbolMap,
+    SymbolIndex &index,
     const kj::Vector<kj::String> &importPaths,
     const kj::StringPtr &workspacePath) {
   try {
@@ -395,12 +391,12 @@ int SymbolResolver::resolve(
       if (node.which() == capnp::schema::Node::Which::FILE) {
         CAPNP_LS_IF_SOME (sourceInfo, fileSourceInfoMap.find(node.getId())) {
           kj::StringPtr filePath = resolveFilePath(node.getDisplayName());
-          positionToNodeIdMap.erase(filePath);
-          documentSymbolMap.erase(filePath);
+          index.fileSourceInfoMap.erase(filePath);
+          index.documentSymbolMap.erase(filePath);
           // Only requested files lose their references. Imported files keep
           // theirs: identifier usages inside an imported file are only
           // re-added when that file is compiled as a requested file.
-          removeReferencesInFile(referenceMap, filePath);
+          removeReferencesInFile(index.referenceMap, filePath);
         }
         continue;
       }
@@ -410,7 +406,7 @@ int SymbolResolver::resolve(
       }
       // Document symbols for this file are fully re-added below, including
       // for imported files.
-      documentSymbolMap.erase(resolveFilePath(displayName));
+      index.documentSymbolMap.erase(resolveFilePath(displayName));
     }
 
     for (auto node : request.getNodes()) {
@@ -418,11 +414,11 @@ int SymbolResolver::resolve(
         CAPNP_LS_IF_SOME (sourceInfo, fileSourceInfoMap.find(node.getId())) {
           kj::StringPtr filePath = resolveFilePath(node.getDisplayName());
 
-          nodeLocationMap.upsert(
+          index.nodeLocationMap.upsert(
               node.getId(),
               kj::heap<Location>(Location{
                   kj::str(filePath), Range{Position{1, 1}, Position{1, 1}}}));
-          nodeMetadataMap.upsert(
+          index.nodeMetadataMap.upsert(
               node.getId(),
               kj::heap<SymbolMetadata>(SymbolMetadata{
                   shortDisplayName(node),
@@ -436,8 +432,8 @@ int SymbolResolver::resolve(
                 positionCalculator.getPosition(
                     filePath, identifier.getEndByte())};
             Location location{kj::str(filePath), range};
-            addReference(referenceMap, identifier.getTypeId(), filePath, range);
-            auto &rangeMap = positionToNodeIdMap.findOrCreate(
+            addReference(index.referenceMap, identifier.getTypeId(), filePath, range);
+            auto &rangeMap = index.fileSourceInfoMap.findOrCreate(
                 location.uri,
                 [&]() -> kj::HashMap<kj::String, kj::HashMap<Range, uint64_t>>::
                           Entry {
@@ -462,18 +458,18 @@ int SymbolResolver::resolve(
         Range range{
             positionCalculator.getPosition(filePath, sourceInfo->getStartByte()),
             positionCalculator.getPosition(filePath, sourceInfo->getEndByte())};
-        nodeLocationMap.upsert(
+        index.nodeLocationMap.upsert(
             node.getId(),
             kj::heap<Location>(Location{kj::str(filePath), range}));
-        nodeMetadataMap.upsert(
+        index.nodeMetadataMap.upsert(
             node.getId(),
             kj::heap<SymbolMetadata>(SymbolMetadata{
                 shortDisplayName(node),
                 nodeKindName(node),
                 kj::heapString(sourceInfo->getDocComment())}));
-        addReference(referenceMap, node.getId(), filePath, range);
+        addReference(index.referenceMap, node.getId(), filePath, range);
         addDocumentSymbol(
-            documentSymbolMap,
+            index.documentSymbolMap,
             filePath,
             DocumentSymbol{
                 shortDisplayName(node),
@@ -482,7 +478,7 @@ int SymbolResolver::resolve(
                 range,
                 range});
         addMemberDocumentSymbols(
-            node, *sourceInfo, filePath, documentSymbolMap, positionCalculator);
+            node, *sourceInfo, filePath, index.documentSymbolMap, positionCalculator);
       }
     }
     // KJ_LOG(INFO, "positionToNodeIdMap:");
