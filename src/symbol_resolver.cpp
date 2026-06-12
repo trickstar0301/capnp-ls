@@ -37,30 +37,220 @@ struct TypeInfo {
   kj::String typeName;
 };
 
-Position getPositionInFile(kj::StringPtr filePath, size_t byteOffset) {
-  auto fs = kj::newDiskFilesystem();
-
-  const kj::Directory &rootDir = fs->getRoot();
-  auto file = rootDir.openFile(kj::Path::parse(filePath.slice(1)));
-
-  Position pos = {1, 1};
-
-  if (byteOffset == 0) {
-    return pos;
+// Converts byte offsets to positions, reading each file once per instance.
+class PositionCalculator {
+public:
+  Position getPosition(kj::StringPtr filePath, size_t byteOffset) {
+    auto &table = lineTables.findOrCreate(
+        filePath,
+        [&]() -> kj::HashMap<kj::String, LineTable>::Entry {
+          return {kj::heapString(filePath), buildLineTable(filePath)};
+        });
+    size_t offset = kj::min(byteOffset, table.contentSize);
+    size_t lineIndex = 0;
+    size_t end = table.lineStarts.size();
+    while (lineIndex + 1 < end) {
+      size_t mid = lineIndex + (end - lineIndex) / 2;
+      if (table.lineStarts[mid] <= offset) {
+        lineIndex = mid;
+      } else {
+        end = mid;
+      }
+    }
+    return Position{
+        static_cast<uint32_t>(lineIndex + 1),
+        static_cast<uint32_t>(offset - table.lineStarts[lineIndex] + 1)};
   }
 
-  auto content = file->readAllText();
+private:
+  struct LineTable {
+    kj::Vector<size_t> lineStarts;
+    size_t contentSize;
+  };
 
-  for (size_t i = 0; i < byteOffset && i < content.size(); ++i) {
-    if (content[i] == '\n') {
-      pos.line++;
-      pos.character = 1;
-    } else {
-      pos.character++;
+  static LineTable buildLineTable(kj::StringPtr filePath) {
+    auto fs = kj::newDiskFilesystem();
+    auto file = fs->getRoot().openFile(kj::Path::parse(filePath.slice(1)));
+    auto content = file->readAllText();
+    kj::Vector<size_t> lineStarts;
+    lineStarts.add(0);
+    for (size_t i = 0; i < content.size(); ++i) {
+      if (content[i] == '\n') {
+        lineStarts.add(i + 1);
+      }
+    }
+    return LineTable{kj::mv(lineStarts), content.size()};
+  }
+
+  kj::HashMap<kj::String, LineTable> lineTables;
+};
+
+constexpr uint32_t LSP_SYMBOL_KIND_FILE = 1;
+constexpr uint32_t LSP_SYMBOL_KIND_METHOD = 6;
+constexpr uint32_t LSP_SYMBOL_KIND_FIELD = 8;
+constexpr uint32_t LSP_SYMBOL_KIND_ENUM = 10;
+constexpr uint32_t LSP_SYMBOL_KIND_INTERFACE = 11;
+constexpr uint32_t LSP_SYMBOL_KIND_CONSTANT = 14;
+constexpr uint32_t LSP_SYMBOL_KIND_ENUM_MEMBER = 22;
+constexpr uint32_t LSP_SYMBOL_KIND_STRUCT = 23;
+
+kj::String shortDisplayName(capnp::schema::Node::Reader node) {
+  auto displayName = node.getDisplayName();
+  auto prefixLength = node.getDisplayNamePrefixLength();
+  if (prefixLength <= displayName.size()) {
+    return kj::heapString(displayName.slice(prefixLength));
+  }
+  return kj::heapString(displayName);
+}
+
+uint32_t documentSymbolKind(capnp::schema::Node::Reader node) {
+  switch (node.which()) {
+  case capnp::schema::Node::Which::FILE:
+    return LSP_SYMBOL_KIND_FILE;
+  case capnp::schema::Node::Which::STRUCT:
+    return LSP_SYMBOL_KIND_STRUCT;
+  case capnp::schema::Node::Which::ENUM:
+    return LSP_SYMBOL_KIND_ENUM;
+  case capnp::schema::Node::Which::INTERFACE:
+    return LSP_SYMBOL_KIND_INTERFACE;
+  case capnp::schema::Node::Which::CONST:
+    return LSP_SYMBOL_KIND_CONSTANT;
+  case capnp::schema::Node::Which::ANNOTATION:
+    return LSP_SYMBOL_KIND_CONSTANT;
+  default:
+    return LSP_SYMBOL_KIND_FIELD;
+  }
+}
+
+kj::String nodeKindName(capnp::schema::Node::Reader node) {
+  switch (node.which()) {
+  case capnp::schema::Node::Which::FILE:
+    return kj::heapString("file");
+  case capnp::schema::Node::Which::STRUCT:
+    return node.getStruct().getIsGroup() ? kj::heapString("group")
+                                         : kj::heapString("struct");
+  case capnp::schema::Node::Which::ENUM:
+    return kj::heapString("enum");
+  case capnp::schema::Node::Which::INTERFACE:
+    return kj::heapString("interface");
+  case capnp::schema::Node::Which::CONST:
+    return kj::heapString("const");
+  case capnp::schema::Node::Which::ANNOTATION:
+    return kj::heapString("annotation");
+  default:
+    return kj::heapString("symbol");
+  }
+}
+
+void addReference(
+    kj::HashMap<uint64_t, kj::Vector<Location>> &referenceMap,
+    uint64_t nodeId,
+    kj::StringPtr uri,
+    const Range &range) {
+  auto &references = referenceMap.findOrCreate(
+      nodeId,
+      [&]() -> kj::HashMap<uint64_t, kj::Vector<Location>>::Entry {
+        return {nodeId, kj::Vector<Location>()};
+      });
+  // Imported files are not cleared on recompile, so skip locations that are
+  // already recorded.
+  for (const auto &reference : references) {
+    if (reference.uri == uri && reference.range == range) {
+      return;
     }
   }
+  references.add(Location{kj::heapString(uri), range});
+}
 
-  return pos;
+void addDocumentSymbol(
+    kj::HashMap<kj::String, kj::Vector<DocumentSymbol>> &documentSymbolMap,
+    kj::StringPtr filePath,
+    DocumentSymbol symbol) {
+  auto &symbols = documentSymbolMap.findOrCreate(
+      filePath,
+      [&]() -> kj::HashMap<kj::String, kj::Vector<DocumentSymbol>>::Entry {
+        return {kj::heapString(filePath), kj::Vector<DocumentSymbol>()};
+      });
+  symbols.add(kj::mv(symbol));
+}
+
+void removeReferencesInFile(
+    kj::HashMap<uint64_t, kj::Vector<Location>> &referenceMap,
+    kj::StringPtr filePath) {
+  for (auto &[_, references] : referenceMap) {
+    size_t writeIndex = 0;
+    for (size_t readIndex = 0; readIndex < references.size(); ++readIndex) {
+      if (references[readIndex].uri != filePath) {
+        if (writeIndex != readIndex) {
+          references[writeIndex] = kj::mv(references[readIndex]);
+        }
+        ++writeIndex;
+      }
+    }
+    references.truncate(writeIndex);
+  }
+}
+
+void addMemberDocumentSymbols(
+    capnp::schema::Node::Reader node,
+    capnp::schema::Node::SourceInfo::Reader sourceInfo,
+    kj::StringPtr filePath,
+    kj::HashMap<kj::String, kj::Vector<DocumentSymbol>> &documentSymbolMap,
+    PositionCalculator &positionCalculator) {
+  auto members = sourceInfo.getMembers();
+
+  if (node.which() == capnp::schema::Node::Which::STRUCT) {
+    auto fields = node.getStruct().getFields();
+    auto size = kj::min(fields.size(), members.size());
+    for (uint i = 0; i < size; ++i) {
+      Range range{
+          positionCalculator.getPosition(filePath, members[i].getStartByte()),
+          positionCalculator.getPosition(filePath, members[i].getEndByte())};
+      addDocumentSymbol(
+          documentSymbolMap,
+          filePath,
+          DocumentSymbol{
+              kj::heapString(fields[i].getName()),
+              kj::heapString("field"),
+              LSP_SYMBOL_KIND_FIELD,
+              range,
+              range});
+    }
+  } else if (node.which() == capnp::schema::Node::Which::ENUM) {
+    auto enumerants = node.getEnum().getEnumerants();
+    auto size = kj::min(enumerants.size(), members.size());
+    for (uint i = 0; i < size; ++i) {
+      Range range{
+          positionCalculator.getPosition(filePath, members[i].getStartByte()),
+          positionCalculator.getPosition(filePath, members[i].getEndByte())};
+      addDocumentSymbol(
+          documentSymbolMap,
+          filePath,
+          DocumentSymbol{
+              kj::heapString(enumerants[i].getName()),
+              kj::heapString("enumerant"),
+              LSP_SYMBOL_KIND_ENUM_MEMBER,
+              range,
+              range});
+    }
+  } else if (node.which() == capnp::schema::Node::Which::INTERFACE) {
+    auto methods = node.getInterface().getMethods();
+    auto size = kj::min(methods.size(), members.size());
+    for (uint i = 0; i < size; ++i) {
+      Range range{
+          positionCalculator.getPosition(filePath, members[i].getStartByte()),
+          positionCalculator.getPosition(filePath, members[i].getEndByte())};
+      addDocumentSymbol(
+          documentSymbolMap,
+          filePath,
+          DocumentSymbol{
+              kj::heapString(methods[i].getName()),
+              kj::heapString("method"),
+              LSP_SYMBOL_KIND_METHOD,
+              range,
+              range});
+    }
+  }
 }
 
 kj::String extractFilePath(
@@ -148,6 +338,9 @@ int SymbolResolver::resolve(
     capnp::schema::CodeGeneratorRequest::Reader request,
     kj::HashMap<kj::String, kj::HashMap<Range, uint64_t>> &positionToNodeIdMap,
     kj::HashMap<uint64_t, kj::Own<Location>> &nodeLocationMap,
+    kj::HashMap<uint64_t, kj::Own<SymbolMetadata>> &nodeMetadataMap,
+    kj::HashMap<uint64_t, kj::Vector<Location>> &referenceMap,
+    kj::HashMap<kj::String, kj::Vector<DocumentSymbol>> &documentSymbolMap,
     const kj::Vector<kj::String> &importPaths,
     const kj::StringPtr &workspacePath) {
   try {
@@ -174,25 +367,76 @@ int SymbolResolver::resolve(
       sourceInfoMap.upsert(sourceInfo.getId(), sourceInfo);
     }
 
-    int depth = 1;
+    PositionCalculator positionCalculator;
+
+    // extractFilePath probes the filesystem, so resolve each display name
+    // prefix only once per request.
+    kj::HashMap<kj::String, kj::String> filePathCache;
+    auto resolveFilePath = [&](kj::StringPtr displayName) -> kj::StringPtr {
+      kj::String key;
+      CAPNP_LS_IF_SOME (pos, displayName.findFirst(':')) {
+        key = kj::heapString(displayName.slice(0, *pos));
+      } else {
+        key = kj::heapString(displayName);
+      }
+      return filePathCache.findOrCreate(
+          key,
+          [&]() -> kj::HashMap<kj::String, kj::String>::Entry {
+            return {
+                kj::mv(key),
+                extractFilePath(displayName, importPaths, workspacePath)};
+          });
+    };
+
+    // Clear stale per-file state before adding anything: node order in the
+    // request is not guaranteed, so clearing while adding could wipe data
+    // that was just added for the same file.
     for (auto node : request.getNodes()) {
       if (node.which() == capnp::schema::Node::Which::FILE) {
         CAPNP_LS_IF_SOME (sourceInfo, fileSourceInfoMap.find(node.getId())) {
-          kj::String filePath = extractFilePath(
-              node.getDisplayName(), importPaths, workspacePath);
-          // clear previous data for this file
+          kj::StringPtr filePath = resolveFilePath(node.getDisplayName());
           positionToNodeIdMap.erase(filePath);
+          documentSymbolMap.erase(filePath);
+          // Only requested files lose their references. Imported files keep
+          // theirs: identifier usages inside an imported file are only
+          // re-added when that file is compiled as a requested file.
+          removeReferencesInFile(referenceMap, filePath);
+        }
+        continue;
+      }
+      kj::StringPtr displayName = node.getDisplayName();
+      if (displayName.endsWith("$Params") || displayName.endsWith("$Results")) {
+        continue;
+      }
+      // Document symbols for this file are fully re-added below, including
+      // for imported files.
+      documentSymbolMap.erase(resolveFilePath(displayName));
+    }
+
+    for (auto node : request.getNodes()) {
+      if (node.which() == capnp::schema::Node::Which::FILE) {
+        CAPNP_LS_IF_SOME (sourceInfo, fileSourceInfoMap.find(node.getId())) {
+          kj::StringPtr filePath = resolveFilePath(node.getDisplayName());
 
           nodeLocationMap.upsert(
               node.getId(),
               kj::heap<Location>(Location{
                   kj::str(filePath), Range{Position{1, 1}, Position{1, 1}}}));
+          nodeMetadataMap.upsert(
+              node.getId(),
+              kj::heap<SymbolMetadata>(SymbolMetadata{
+                  shortDisplayName(node),
+                  nodeKindName(node),
+                  kj::heapString("")}));
 
           for (auto identifier : sourceInfo->getIdentifiers()) {
             Range range{
-                getPositionInFile(filePath, identifier.getStartByte()),
-                getPositionInFile(filePath, identifier.getEndByte())};
+                positionCalculator.getPosition(
+                    filePath, identifier.getStartByte()),
+                positionCalculator.getPosition(
+                    filePath, identifier.getEndByte())};
             Location location{kj::str(filePath), range};
+            addReference(referenceMap, identifier.getTypeId(), filePath, range);
             auto &rangeMap = positionToNodeIdMap.findOrCreate(
                 location.uri,
                 [&]() -> kj::HashMap<kj::String, kj::HashMap<Range, uint64_t>>::
@@ -212,16 +456,33 @@ int SymbolResolver::resolve(
         continue;
       }
 
-      kj::String filePath =
-          extractFilePath(displayName, importPaths, workspacePath);
+      kj::StringPtr filePath = resolveFilePath(displayName);
 
       CAPNP_LS_IF_SOME (sourceInfo, sourceInfoMap.find(node.getId())) {
         Range range{
-            getPositionInFile(filePath, sourceInfo->getStartByte()),
-            getPositionInFile(filePath, sourceInfo->getEndByte())};
+            positionCalculator.getPosition(filePath, sourceInfo->getStartByte()),
+            positionCalculator.getPosition(filePath, sourceInfo->getEndByte())};
         nodeLocationMap.upsert(
             node.getId(),
             kj::heap<Location>(Location{kj::str(filePath), range}));
+        nodeMetadataMap.upsert(
+            node.getId(),
+            kj::heap<SymbolMetadata>(SymbolMetadata{
+                shortDisplayName(node),
+                nodeKindName(node),
+                kj::heapString(sourceInfo->getDocComment())}));
+        addReference(referenceMap, node.getId(), filePath, range);
+        addDocumentSymbol(
+            documentSymbolMap,
+            filePath,
+            DocumentSymbol{
+                shortDisplayName(node),
+                nodeKindName(node),
+                documentSymbolKind(node),
+                range,
+                range});
+        addMemberDocumentSymbols(
+            node, *sourceInfo, filePath, documentSymbolMap, positionCalculator);
       }
     }
     // KJ_LOG(INFO, "positionToNodeIdMap:");

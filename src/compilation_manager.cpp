@@ -35,6 +35,9 @@ kj::Promise<void> CompilationManager::compile(CompileParams params) {
           request,
           params.fileSourceInfoMap,
           params.nodeLocationMap,
+          params.nodeMetadataMap,
+          params.referenceMap,
+          params.documentSymbolMap,
           params.importPaths,
           params.workingDir);
     }
