@@ -284,5 +284,31 @@ int main() {
   require(!invalidResult.success, "invalid fixture should fail");
   require(index.diagnosticMap.size() > 0, "invalid fixture should produce diagnostics");
 
+  // Verify diagnostic position convention: internal 1-based.
+  // error_company.capnp line 10: "const myCompanyId :UInt3 = 123;"
+  // Compiler reports 0-based 9/19–9/24; we expect 1-based 10/20–10/25 internally.
+  auto errorFilePath = fixturePath("schemas/error_company.capnp");
+  CAPNP_LS_IF_SOME (fileDiagnostics, index.diagnosticMap.find(errorFilePath)) {
+    bool foundUint3Error = false;
+    for (const auto &diagnostic : *fileDiagnostics) {
+      if (diagnostic.message.startsWith("Not defined: UInt3")) {
+        foundUint3Error = true;
+        require(
+            diagnostic.range.start.line == 10,
+            "diagnostic should have 1-based line 10");
+        require(
+            diagnostic.range.start.character == 20,
+            "diagnostic should have 1-based character 20");
+        require(
+            diagnostic.range.end.line == 10,
+            "diagnostic should have 1-based end line 10");
+        require(
+            diagnostic.range.end.character == 25,
+            "diagnostic should have 1-based end character 25");
+      }
+    }
+    require(foundUint3Error, "should find UInt3 diagnostic");
+  }
+
   return 0;
 }

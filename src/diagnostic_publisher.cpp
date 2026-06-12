@@ -6,6 +6,7 @@
 #include "diagnostic_publisher.h"
 #include "json_rpc.h"
 #include "kj_compat.h"
+#include "lsp_json.h"
 #include "lsp_types.h"
 #include <capnp/compat/json.h>
 #include <capnp/message.h>
@@ -93,7 +94,7 @@ kj::Promise<void> DiagnosticPublisher::publishDiagnosticsForFile(
 
       // Set severity
       diagnosticObj[0].setName("severity");
-      diagnosticObj[0].getValue().setNumber(1); // Error = 1
+      diagnosticObj[0].getValue().setNumber(static_cast<double>(diagnostic.severity));
 
       // Set message
       diagnosticObj[1].setName("message");
@@ -101,25 +102,7 @@ kj::Promise<void> DiagnosticPublisher::publishDiagnosticsForFile(
 
       // Set range
       diagnosticObj[2].setName("range");
-      auto rangeObj = diagnosticObj[2].getValue().initObject(2);
-
-      // Start position
-      auto startObj = rangeObj[0];
-      startObj.setName("start");
-      auto start = startObj.getValue().initObject(2);
-      start[0].setName("line");
-      start[0].getValue().setNumber(diagnostic.range.start.line);
-      start[1].setName("character");
-      start[1].getValue().setNumber(diagnostic.range.start.character);
-
-      // End position
-      auto endObj = rangeObj[1];
-      endObj.setName("end");
-      auto end = endObj.getValue().initObject(2);
-      end[0].setName("line");
-      end[0].getValue().setNumber(diagnostic.range.end.line);
-      end[1].setName("character");
-      end[1].getValue().setNumber(diagnostic.range.end.character);
+      setRange(diagnosticObj[2].getValue(), diagnostic.range);
     }
 
     // Encode and send the notification

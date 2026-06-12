@@ -37,14 +37,15 @@ public:
       filePath = path.toString();
     }
 
+    // SourcePos is 0-based; internal Ranges are 1-based (see lsp_json.cpp).
     Diagnostic diagnostic;
     diagnostic.range.start = {
-        static_cast<uint32_t>(start.line),
-        static_cast<uint32_t>(start.column),
+        static_cast<uint32_t>(start.line + 1),
+        static_cast<uint32_t>(start.column + 1),
     };
     diagnostic.range.end = {
-        static_cast<uint32_t>(end.line),
-        static_cast<uint32_t>(end.column),
+        static_cast<uint32_t>(end.line + 1),
+        static_cast<uint32_t>(end.column + 1),
     };
     diagnostic.severity = DiagnosticSeverity::Error;
     diagnostic.message = kj::heapString(message);
@@ -109,8 +110,8 @@ void addCompilerDiagnostic(
     kj::StringPtr filePath,
     kj::StringPtr message) {
   Diagnostic diagnostic;
-  diagnostic.range.start = {0, 0};
-  diagnostic.range.end = {0, 0};
+  diagnostic.range.start = {1, 1};
+  diagnostic.range.end = {1, 1};
   diagnostic.severity = DiagnosticSeverity::Error;
   diagnostic.message = kj::heapString(message);
   diagnostic.source = kj::heapString("capnp-compiler");
