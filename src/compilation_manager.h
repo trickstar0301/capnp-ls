@@ -18,7 +18,7 @@ namespace capnp_ls {
 
 class CompilationManager {
 public:
-  explicit CompilationManager(kj::AsyncIoContext &ioContext);
+  CompilationManager() = default;
   KJ_DISALLOW_COPY(CompilationManager);
 
   struct CompileParams {
@@ -38,12 +38,6 @@ public:
     SymbolIndex &index;
   };
 
-  struct FormatParams {
-    kj::StringPtr fileName;
-    kj::StringPtr workingDir;
-  };
-
   kj::Promise<void> compile(CompileParams params);
-  kj::Promise<void> format(FormatParams params);
 };
 } // namespace capnp_ls

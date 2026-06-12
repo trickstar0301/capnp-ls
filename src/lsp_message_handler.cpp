@@ -59,7 +59,7 @@ LspMessageHandler::LspMessageHandler(
     StdoutWriter &stdoutWriter)
     : context(serverContext), stdoutWriter(stdoutWriter),
       diagnosticPublisher(stdoutWriter) {
-  compilationManager = kj::heap<CompilationManager>(context.getIoContext());
+  compilationManager = kj::heap<CompilationManager>();
 }
 
 kj::Promise<void>
@@ -601,7 +601,7 @@ kj::Promise<void> LspMessageHandler::handleFormatting(
       }
     }
     KJ_LOG(ERROR, "Formatting capability is not implemented yet");
-    // TODO: Call CompilationManager::format
+    // TODO: implement formatting
   } catch (kj::Exception &e) {
     KJ_LOG(
         ERROR,

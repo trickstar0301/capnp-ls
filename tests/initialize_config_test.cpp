@@ -168,7 +168,7 @@ bool arrayHasObjectWithStringField(
 int main() {
   auto io = kj::setupAsyncIo();
   auto paf = kj::newPromiseAndFulfiller<void>();
-  capnp_ls::ServerContext context(io, kj::mv(paf.fulfiller));
+  capnp_ls::ServerContext context(kj::mv(paf.fulfiller));
 
   {
     capnp_ls::StdoutWriter writer(kj::heap<NullOutputStream>());

@@ -9,10 +9,6 @@
 
 namespace capnp_ls {
 
-CompilationManager::CompilationManager(kj::AsyncIoContext &ioContext) {
-  (void)ioContext;
-}
-
 kj::Promise<void> CompilationManager::compile(CompileParams params) {
   try {
     KJ_LOG(INFO, "Compiling:", params.fileName);
