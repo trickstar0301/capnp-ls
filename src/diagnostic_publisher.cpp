@@ -8,6 +8,7 @@
 #include "kj_compat.h"
 #include "lsp_json.h"
 #include "lsp_types.h"
+#include "utils.h"
 #include <capnp/compat/json.h>
 #include <capnp/message.h>
 #include <kj/debug.h>
@@ -20,8 +21,7 @@ DiagnosticPublisher::DiagnosticPublisher(StdoutWriter &writer)
 kj::Promise<void> DiagnosticPublisher::publishDiagnostics(
     const kj::HashMap<kj::String, kj::Vector<Diagnostic>> &diagnosticMap,
     kj::StringPtr fileName,
-    kj::Vector<kj::String> previousDiagnosticFiles,
-    kj::StringPtr workspacePath) {
+    kj::Vector<kj::String> previousDiagnosticFiles) {
   KJ_LOG(INFO, "Publishing diagnostics");
 
   bool publishedCurrentFile = false;
@@ -29,11 +29,11 @@ kj::Promise<void> DiagnosticPublisher::publishDiagnostics(
     if (uri == fileName) {
       publishedCurrentFile = true;
     }
-    (void)publishDiagnosticsForFile(uri, &diagnostics, workspacePath);
+    (void)publishDiagnosticsForFile(uri, &diagnostics);
   }
 
   if (!publishedCurrentFile) {
-    (void)publishDiagnosticsForFile(fileName, nullptr, workspacePath);
+    (void)publishDiagnosticsForFile(fileName, nullptr);
   }
 
   for (auto &previousFile : previousDiagnosticFiles) {
@@ -43,7 +43,7 @@ kj::Promise<void> DiagnosticPublisher::publishDiagnostics(
       stillHasDiagnostics = true;
     }
     if (previousFile != fileName && !stillHasDiagnostics) {
-      (void)publishDiagnosticsForFile(previousFile, nullptr, workspacePath);
+      (void)publishDiagnosticsForFile(previousFile, nullptr);
     }
   }
 
@@ -52,8 +52,7 @@ kj::Promise<void> DiagnosticPublisher::publishDiagnostics(
 
 kj::Promise<void> DiagnosticPublisher::publishDiagnosticsForFile(
     kj::StringPtr fileName,
-    const kj::Vector<Diagnostic> *diagnostics,
-    kj::StringPtr workspacePath) {
+    const kj::Vector<Diagnostic> *diagnostics) {
   try {
     capnp::MallocMessageBuilder messageBuilder;
     auto root = messageBuilder.initRoot<capnp::JsonValue>();
@@ -73,14 +72,7 @@ kj::Promise<void> DiagnosticPublisher::publishDiagnosticsForFile(
 
     // Set URI
     params[0].setName("uri");
-    // Ensure fileName is relative to workspacePath
-    kj::StringPtr relativeFileName = fileName;
-    if (fileName.startsWith(workspacePath)) {
-      relativeFileName = fileName.slice(
-          workspacePath.size() + 1); // +1 for the trailing slash
-    }
-    kj::String fullUri =
-        kj::str("file://", workspacePath, "/", relativeFileName);
+    kj::String fullUri = pathToUri(fileName);
     params[0].getValue().setString(fullUri);
 
     // Set diagnostics array

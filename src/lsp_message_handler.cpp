@@ -148,8 +148,7 @@ kj::Promise<void> LspMessageHandler::compileCapnpFile(kj::StringPtr uri) {
           return diagnosticPublisher.publishDiagnostics(
               index.diagnosticMap,
               strippedUri,
-              kj::mv(previousDiagnosticFiles),
-              workspace.workspacePath);
+              kj::mv(previousDiagnosticFiles));
         });
   }
   return kj::READY_NOW;

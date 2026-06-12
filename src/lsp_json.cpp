@@ -28,7 +28,7 @@ void setRange(capnp::JsonValue::Builder value, const Range &range) {
 void setLocation(capnp::JsonValue::Builder value, const Location &location) {
   auto locationObj = value.initObject(2);
   locationObj[0].setName("uri");
-  locationObj[0].getValue().setString(kj::str("file://", location.uri));
+  locationObj[0].getValue().setString(pathToUri(location.uri));
   locationObj[1].setName("range");
   setRange(locationObj[1].getValue(), location.range);
 }

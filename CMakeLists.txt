@@ -100,6 +100,17 @@ if(CAPNP_LS_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/src
     )
     add_test(NAME lsp-json COMMAND capnp-ls-lsp-json-test)
+    add_executable(capnp-ls-utils-test
+        tests/utils_test.cpp
+        src/utils.cpp
+    )
+    target_link_libraries(capnp-ls-utils-test PRIVATE
+        kj
+    )
+    target_include_directories(capnp-ls-utils-test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    add_test(NAME utils COMMAND capnp-ls-utils-test)
     add_executable(capnp-ls-linked-compiler-test
         tests/linked_compiler_test.cpp
         src/project_config.cpp

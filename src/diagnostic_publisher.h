@@ -20,12 +20,10 @@ public:
   kj::Promise<void> publishDiagnostics(
       const kj::HashMap<kj::String, kj::Vector<Diagnostic>> &diagnosticMap,
       kj::StringPtr fileName,
-      kj::Vector<kj::String> previousDiagnosticFiles,
-      kj::StringPtr workspacePath);
+      kj::Vector<kj::String> previousDiagnosticFiles);
   kj::Promise<void> publishDiagnosticsForFile(
       kj::StringPtr fileName,
-      const kj::Vector<Diagnostic> *diagnostics,
-      kj::StringPtr workspacePath);
+      const kj::Vector<Diagnostic> *diagnostics);
 
 private:
   StdoutWriter &stdoutWriter;
