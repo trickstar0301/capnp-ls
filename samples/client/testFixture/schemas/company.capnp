@@ -29,6 +29,7 @@ interface EmployeeManagement {
         street @8 :Text;
         city @9 :Text;
         country @10 :Text;
+        town @11 :Text;
       }
     }
   }

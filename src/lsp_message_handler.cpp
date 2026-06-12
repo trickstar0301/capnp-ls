@@ -5,9 +5,11 @@
 
 #include "lsp_message_handler.h"
 #include "json_rpc.h"
+#include "keyword_completion.h"
 #include "kj_compat.h"
 #include "lsp_json.h"
 #include "lsp_types.h"
+#include "ordinal_completion.h"
 #include "workspace_state.h"
 #include <capnp/compat/json.h>
 #include <capnp/message.h>
@@ -170,17 +172,21 @@ kj::Promise<void> LspMessageHandler::dispatch(LspMethod method, const capnp::Jso
     return handleDocumentSymbol(params, response);
   case LspMethod::DID_OPEN:
     return handleDidOpenTextDocument(params);
+  case LspMethod::DID_CHANGE:
+    return handleDidChangeTextDocument(params);
+  case LspMethod::DID_CLOSE:
+    return handleDidCloseTextDocument(params);
   case LspMethod::DID_SAVE:
     return handleDidSave(params);
   case LspMethod::DID_CHANGE_WATCHED_FILES:
     return handleDidChangeWatchedFiles(params);
+  case LspMethod::COMPLETION:
+    return handleCompletion(params, response);
   case LspMethod::FORMATTING:
     return handleFormatting(params, response);
   case LspMethod::INITIALIZED:
   case LspMethod::SET_TRACE:
   case LspMethod::CANCEL_REQUEST:
-  case LspMethod::DID_CHANGE:
-  case LspMethod::DID_CLOSE:
     break;
   }
   return kj::READY_NOW;
@@ -510,7 +516,7 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
   auto capsField = resultValue[0];
   capsField.setName("capabilities");
 
-  auto capabilities = capsField.getValue().initObject(5);
+  auto capabilities = capsField.getValue().initObject(6);
 
   // Set text document sync capability
   auto syncField = capabilities[0];
@@ -546,6 +552,13 @@ kj::Promise<void> LspMessageHandler::handleInitialize(
   documentSymbolField.setName("documentSymbolProvider");
   documentSymbolField.getValue().setBoolean(true);
 
+  auto completionField = capabilities[5];
+  completionField.setName("completionProvider");
+  auto completionProvider = completionField.getValue().initObject(1);
+  completionProvider[0].setName("triggerCharacters");
+  auto triggerCharacters = completionProvider[0].getValue().initArray(1);
+  triggerCharacters[0].setString("@");
+
   return kj::READY_NOW;
 }
 
@@ -556,6 +569,41 @@ kj::Promise<void> LspMessageHandler::handleDidOpenTextDocument(
   try {
     auto paramsObj = params.getObject();
     kj::String uri;
+    kj::String text;
+
+    for (auto field : paramsObj) {
+      if (field.getName() == "textDocument") {
+        auto textDocument = field.getValue().getObject();
+        for (auto docField : textDocument) {
+          if (docField.getName() == "uri") {
+            uri = kj::heapString(docField.getValue().getString());
+          } else if (docField.getName() == "text") {
+            text = kj::heapString(docField.getValue().getString());
+          }
+        }
+      }
+    }
+    if (uri.size() > 0) {
+      openDocuments.upsert(uriToPath(uri), kj::mv(text));
+    }
+    return compileCapnpFile(uri);
+  } catch (kj::Exception &e) {
+    KJ_LOG(
+        ERROR,
+        "Error processing didOpenTextDocument notification",
+        e.getDescription());
+  }
+  return kj::READY_NOW;
+}
+
+kj::Promise<void> LspMessageHandler::handleDidChangeTextDocument(
+    const capnp::JsonValue::Reader &params) {
+  KJ_LOG(INFO, "Handling didChangeTextDocument notification");
+
+  try {
+    auto paramsObj = params.getObject();
+    kj::String uri;
+    kj::Maybe<kj::String> fullText;
 
     for (auto field : paramsObj) {
       if (field.getName() == "textDocument") {
@@ -565,15 +613,115 @@ kj::Promise<void> LspMessageHandler::handleDidOpenTextDocument(
             uri = kj::heapString(docField.getValue().getString());
           }
         }
+      } else if (field.getName() == "contentChanges") {
+        for (auto change : field.getValue().getArray()) {
+          // The server advertises full document sync (change = 1), so each
+          // change carries the complete text; a range would mean an
+          // incremental change we must not apply as a replacement.
+          bool hasRange = false;
+          kj::Maybe<kj::String> changeText;
+          for (auto changeField : change.getObject()) {
+            if (changeField.getName() == "range") {
+              hasRange = true;
+            } else if (changeField.getName() == "text") {
+              changeText = kj::heapString(changeField.getValue().getString());
+            }
+          }
+          if (!hasRange) {
+            fullText = kj::mv(changeText);
+          }
+        }
       }
     }
-    return compileCapnpFile(uri);
+    if (uri.size() > 0) {
+      CAPNP_LS_IF_SOME (text, fullText) {
+        openDocuments.upsert(uriToPath(uri), kj::mv(*text));
+      }
+    }
   } catch (kj::Exception &e) {
     KJ_LOG(
         ERROR,
-        "Error processing didOpenTextDocument notification",
+        "Error processing didChangeTextDocument notification",
         e.getDescription());
   }
+  return kj::READY_NOW;
+}
+
+kj::Promise<void> LspMessageHandler::handleDidCloseTextDocument(
+    const capnp::JsonValue::Reader &params) {
+  KJ_LOG(INFO, "Handling didCloseTextDocument notification");
+
+  try {
+    auto path = parseTextDocumentPath(params);
+    openDocuments.erase(path);
+  } catch (kj::Exception &e) {
+    KJ_LOG(
+        ERROR,
+        "Error processing didCloseTextDocument notification",
+        e.getDescription());
+  }
+  return kj::READY_NOW;
+}
+
+kj::Promise<void> LspMessageHandler::handleCompletion(
+    const capnp::JsonValue::Reader &params,
+    capnp::MallocMessageBuilder &completionResponseBuilder) {
+  KJ_LOG(INFO, "Handling completion request");
+
+  auto root = completionResponseBuilder.initRoot<capnp::JsonValue>();
+  auto resultObj = root.initObject(1);
+  auto resultField = resultObj[0];
+  resultField.setName(LSP_RESULT);
+
+  try {
+    auto position = parseTextDocumentPosition(params);
+    CAPNP_LS_IF_SOME (text, openDocuments.find(position.path)) {
+      CAPNP_LS_IF_SOME (
+          completion,
+          computeOrdinalCompletion(*text, position.line, position.character)) {
+        auto label = kj::str(completion->nextOrdinal);
+        auto array = resultField.getValue().initArray(1);
+        auto item = array[0].initObject(4);
+        item[0].setName("label");
+        item[0].getValue().setString(label);
+        item[1].setName("kind");
+        item[1].getValue().setNumber(12); // CompletionItemKind.Value
+        item[2].setName("preselect");
+        item[2].getValue().setBoolean(true);
+        item[3].setName("textEdit");
+        auto textEdit = item[3].getValue().initObject(2);
+        textEdit[0].setName("range");
+        setRange(textEdit[0].getValue(), completion->replaceRange);
+        textEdit[1].setName("newText");
+        textEdit[1].getValue().setString(label);
+        return kj::READY_NOW;
+      }
+      CAPNP_LS_IF_SOME (
+          completion,
+          computeKeywordCompletion(*text, position.line, position.character)) {
+        auto array = resultField.getValue().initArray(completion->keywords.size());
+        for (size_t i = 0; i < completion->keywords.size(); ++i) {
+          auto keyword = completion->keywords[i];
+          auto item = array[i].initObject(3);
+          item[0].setName("label");
+          item[0].getValue().setString(keyword);
+          item[1].setName("kind");
+          item[1].getValue().setNumber(14); // CompletionItemKind.Keyword
+          item[2].setName("textEdit");
+          auto textEdit = item[2].getValue().initObject(2);
+          textEdit[0].setName("range");
+          setRange(textEdit[0].getValue(), completion->replaceRange);
+          textEdit[1].setName("newText");
+          textEdit[1].getValue().setString(keyword);
+        }
+        return kj::READY_NOW;
+      }
+    }
+  } catch (kj::Exception &e) {
+    KJ_LOG(ERROR, "Error processing completion request", e.getDescription());
+  }
+
+  resultField.getValue().initArray(0);
   return kj::READY_NOW;
 }
 

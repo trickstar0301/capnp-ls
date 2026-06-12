@@ -72,6 +72,13 @@ private:
       capnp::MallocMessageBuilder &initializeResponseBuilder);
   kj::Promise<void>
   handleDidOpenTextDocument(const capnp::JsonValue::Reader &params);
+  kj::Promise<void>
+  handleDidChangeTextDocument(const capnp::JsonValue::Reader &params);
+  kj::Promise<void>
+  handleDidCloseTextDocument(const capnp::JsonValue::Reader &params);
+  kj::Promise<void> handleCompletion(
+      const capnp::JsonValue::Reader &params,
+      capnp::MallocMessageBuilder &completionResponseBuilder);
   kj::Promise<void> handleFormatting(
       const capnp::JsonValue::Reader &params,
       capnp::MallocMessageBuilder &formattingResponseBuilder);
@@ -81,6 +88,9 @@ private:
 
   SymbolIndex index;
   WorkspaceState workspace;
+  // Editor buffers keyed by file path; the source of truth for features that
+  // must work on unsaved text (completion).
+  kj::HashMap<kj::String, kj::String> openDocuments;
   ServerContext &context;
   kj::Own<CompilationManager> compilationManager;
   StdoutWriter &stdoutWriter;
