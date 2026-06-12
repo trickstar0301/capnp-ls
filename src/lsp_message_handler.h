@@ -6,6 +6,7 @@
 #pragma once
 
 #include "compilation_manager.h"
+#include "diagnostic_publisher.h"
 #include "log_level.h"
 #include "lsp_types.h"
 #include "server_context.h"
@@ -73,12 +74,6 @@ private:
   kj::Promise<void> handleFormatting(
       const capnp::JsonValue::Reader &params,
       capnp::MallocMessageBuilder &formattingResponseBuilder);
-  kj::Promise<void> publishDiagnostics(
-      kj::StringPtr fileName,
-      kj::Vector<kj::String> previousDiagnosticFiles);
-  kj::Promise<void> publishDiagnosticsForFile(
-      kj::StringPtr fileName,
-      const kj::Vector<Diagnostic> *diagnostics);
   bool reloadProjectConfig();
   void clearCompilationState();
   bool isProjectConfigPath(kj::StringPtr path);
@@ -94,6 +89,7 @@ private:
   ServerContext &context;
   kj::Own<CompilationManager> compilationManager;
   StdoutWriter &stdoutWriter;
+  DiagnosticPublisher diagnosticPublisher;
   kj::Promise<void> compileCapnpFile(kj::StringPtr uri);
 };
 } // namespace capnp_ls
