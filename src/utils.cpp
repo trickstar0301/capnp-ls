@@ -8,6 +8,7 @@
 
 #include <cstdint>
 
+#include "kj_compat.h"
 #include "utils.h"
 
 namespace capnp_ls {
@@ -93,6 +94,40 @@ kj::String pathToUri(const kj::StringPtr path) {
   }
 
   return kj::heapString(encoded.begin(), encoded.size());
+}
+
+kj::Maybe<size_t> byteOffsetForPosition(
+    kj::StringPtr text,
+    uint32_t line,
+    uint32_t character) {
+  size_t offset = 0;
+  for (uint32_t currentLine = 1; currentLine < line; ++currentLine) {
+    while (offset < text.size() && text[offset] != '\n') {
+      ++offset;
+    }
+    if (offset >= text.size()) {
+      return CAPNP_LS_NONE;
+    }
+    ++offset;
+  }
+  uint32_t units = 1;
+  while (offset < text.size() && text[offset] != '\n' && units < character) {
+    unsigned char head = static_cast<unsigned char>(text[offset]);
+    if ((head & 0xf8) == 0xf0) {
+      offset += 4;
+      units += 2; // outside the BMP: a surrogate pair on the wire
+    } else if ((head & 0xf0) == 0xe0) {
+      offset += 3;
+      units += 1;
+    } else if ((head & 0xe0) == 0xc0) {
+      offset += 2;
+      units += 1;
+    } else {
+      offset += 1;
+      units += 1;
+    }
+  }
+  return offset < text.size() ? offset : text.size();
 }
 
 } // namespace capnp_ls

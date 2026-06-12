@@ -200,6 +200,16 @@ initialization options are:
 
 - Enables navigation to the definition of types, enums, and other symbols in Cap'n Proto schema files.
 
+### Completion
+
+- Suggests the next field, method, or enumerant ordinal when typing `@` inside
+  a struct, interface, or enum body, based on the unsaved editor buffer.
+- Members of `union` and `group` blocks are numbered within the enclosing
+  struct's ordinal space, matching the Cap'n Proto schema language.
+- Suggests declaration keywords (`struct`, `interface`, `enum`, `const`,
+  `using`, `annotation`, and `union` where valid) when typing the first word
+  of a statement.
+
 ### File Watching
 
 - Automatically recompiles schemas when files are saved.
@@ -210,7 +220,6 @@ initialization options are:
 
 ## Upcoming Features
 
-- Autocomplete feature that includes ordinals
 - Formatting feature
 
 ## Sample VSCode Extension

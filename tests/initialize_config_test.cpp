@@ -197,8 +197,8 @@ int main() {
     auto result = getObjectField(responseRoot, "result");
     auto capabilities = getObjectField(result, "capabilities");
     require(
-        !hasObjectField(capabilities, "completionProvider"),
-        "initialize should not advertise completion without a completion handler");
+        hasObjectField(capabilities, "completionProvider"),
+        "initialize should advertise completion support");
     require(
         hasObjectField(capabilities, "hoverProvider"),
         "initialize should advertise hover support");
@@ -434,9 +434,8 @@ struct Person {
     capnp_ls::StdoutWriter writer(kj::mv(stream));
     capnp_ls::LspMessageHandler handler(context, writer);
     handler
-        .handleMessage(kj::str(
-            "Content-Length: 67\r\n\r\n",
-            R"({"jsonrpc":"2.0","id":42,"method":"textDocument/completion"})"))
+        .handleMessage(lspMessage(
+            R"({"jsonrpc":"2.0","id":42,"method":"textDocument/rename"})"))
         .wait(io.waitScope);
 
     capnp::MallocMessageBuilder response;

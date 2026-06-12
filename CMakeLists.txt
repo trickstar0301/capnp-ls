@@ -36,6 +36,8 @@ add_executable(${exe_name}
     src/symbol_index.cpp
     src/diagnostic_publisher.cpp
     src/workspace_state.cpp
+    src/ordinal_completion.cpp
+    src/keyword_completion.cpp
 )
 
 if(NOT EXISTS "${CAPNP_SOURCE_DIR}/src/capnp/compiler/compiler.h")
@@ -111,6 +113,32 @@ if(CAPNP_LS_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/src
     )
     add_test(NAME utils COMMAND capnp-ls-utils-test)
+    add_executable(capnp-ls-ordinal-completion-test
+        tests/ordinal_completion_test.cpp
+        src/ordinal_completion.cpp
+        src/lsp_types.cpp
+        src/utils.cpp
+    )
+    target_link_libraries(capnp-ls-ordinal-completion-test PRIVATE
+        kj
+    )
+    target_include_directories(capnp-ls-ordinal-completion-test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    add_test(NAME ordinal-completion COMMAND capnp-ls-ordinal-completion-test)
+    add_executable(capnp-ls-keyword-completion-test
+        tests/keyword_completion_test.cpp
+        src/keyword_completion.cpp
+        src/lsp_types.cpp
+        src/utils.cpp
+    )
+    target_link_libraries(capnp-ls-keyword-completion-test PRIVATE
+        kj
+    )
+    target_include_directories(capnp-ls-keyword-completion-test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    add_test(NAME keyword-completion COMMAND capnp-ls-keyword-completion-test)
     add_executable(capnp-ls-linked-compiler-test
         tests/linked_compiler_test.cpp
         src/project_config.cpp
@@ -134,6 +162,8 @@ if(CAPNP_LS_BUILD_TESTS)
         src/symbol_index.cpp
         src/diagnostic_publisher.cpp
         src/workspace_state.cpp
+        src/ordinal_completion.cpp
+        src/keyword_completion.cpp
     )
     target_sources(capnp-ls-initialize-config-test PRIVATE
         "${CAPNP_SOURCE_DIR}/src/capnp/compiler/module-loader.c++"
@@ -178,4 +208,42 @@ if(CAPNP_LS_BUILD_TESTS)
     )
     add_test(NAME linked-compiler COMMAND capnp-ls-linked-compiler-test)
     add_test(NAME initialize-config COMMAND capnp-ls-initialize-config-test)
+    add_executable(capnp-ls-completion-test
+        tests/completion_test.cpp
+        src/stdout_writer.cpp
+        src/lsp_message_handler.cpp
+        src/json_rpc.cpp
+        src/lsp_json.cpp
+        src/lsp_types.cpp
+        src/project_config.cpp
+        src/utils.cpp
+        src/linked_compiler.cpp
+        src/compilation_manager.cpp
+        src/symbol_resolver.cpp
+        src/symbol_index.cpp
+        src/diagnostic_publisher.cpp
+        src/workspace_state.cpp
+        src/ordinal_completion.cpp
+        src/keyword_completion.cpp
+    )
+    target_sources(capnp-ls-completion-test PRIVATE
+        "${CAPNP_SOURCE_DIR}/src/capnp/compiler/module-loader.c++"
+    )
+    target_include_directories(capnp-ls-completion-test BEFORE PRIVATE
+        ${CAPNP_SOURCE_DIR}/src
+    )
+    target_link_libraries(capnp-ls-completion-test PRIVATE
+        capnp-json
+        capnpc
+        capnp
+        kj-async
+        kj
+    )
+    target_include_directories(capnp-ls-completion-test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_compile_definitions(capnp-ls-completion-test PRIVATE
+        CAPNP_LS_CAPNP_SOURCE_DIR="${CAPNP_SOURCE_DIR}"
+    )
+    add_test(NAME completion COMMAND capnp-ls-completion-test)
 endif()
