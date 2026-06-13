@@ -10,6 +10,7 @@
 		"url": "https://github.com/trickstar0301/capnp-ls"
 	},
 	"publisher": "tomitty",
+	"icon": "client/images/icon.png",
 	"categories": [],
 	"keywords": [
 		"capnp",
