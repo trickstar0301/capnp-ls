@@ -22,7 +22,7 @@ Cap'n Proto channel with environment variables:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/trickstar0301/capnp-ls/main/install.sh \
-  | CAPNP_LS_VERSION=v0.0.5 \
+  | CAPNP_LS_VERSION=v0.0.6 \
     CAPNP_LS_INSTALL_DIR="$HOME/.local/bin" \
     CAPNP_LS_CAPNP_VERSION=v2 \
     sh
@@ -122,7 +122,7 @@ To build a macOS arm64 release artifact locally:
 ```bash
 scripts/build-macos-arm64-release.sh v1 /path/to/capnproto-v1.4.0/c++
 gh release upload \
-  v0.0.5 \
+  v0.0.6 \
   dist/capnp-ls-macos-arm64-capnp-v1 \
   dist/capnp-ls-macos-arm64-capnp-v1.sha256 \
   --clobber
