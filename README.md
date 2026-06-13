@@ -2,6 +2,8 @@
 
 A language server that provides IDE features for Cap'n Proto schema files, including go-to-definition and automatic recompilation.
 
+![capnp-ls in action: go-to-definition, hover, and ordinal completion in a Cap'n Proto schema](docs/capnp-ls-client-demo.gif)
+
 ## Installing
 
 Install the latest release binary:
